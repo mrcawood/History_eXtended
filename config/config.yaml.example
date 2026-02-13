@@ -1,0 +1,16 @@
+# hx config example
+# Copy to ~/.config/hx/config.yaml (or $XDG_CONFIG_HOME/hx/config.yaml)
+# Env overrides: HX_SPOOL_DIR, HX_BLOB_DIR, HX_DB_PATH
+
+# spool_dir: $XDG_DATA_HOME/hx/spool
+# blob_dir: $XDG_DATA_HOME/hx/blobs
+# db_path: $XDG_DATA_HOME/hx/hx.db
+
+retention_events_months: 12
+retention_blobs_days: 90
+blob_disk_cap_gb: 2.0
+
+allowlist_mode: false
+# allowlist_bins: [git, make, cmake, pytest, srun, sbatch]
+
+# ignore_patterns: ['*password*', '*secret*']
