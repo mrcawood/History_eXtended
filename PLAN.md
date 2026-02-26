@@ -353,7 +353,8 @@ M3.3 ──→ M3.5
 - **M2:** 9 tasks; daemon tails spool, pairs pre/post, batch inserts into SQLite with WAL + cmd dedup; hx status shows daemon health.
 - **M3:** 5 tasks; hx find (FTS5) + hx last (last session + failure highlights).
 - **M4:** Artifact ingestion, skeleton fingerprints, hx attach, hx query --file (see below).
-- **Next milestone:** M5 (Ollama) or M6 (retention).
+- **M7:** 9 tasks; history import (hx import --file); parsers, dedup, pipeline, CLI.
+- **Next milestone:** M5 (Ollama), M6 (retention), or M7 (history import).
 
 ---
 
@@ -452,3 +453,134 @@ M4.2 ──┬─→ M4.4
 - `hx query "question"` without --file (M5 LLM)
 - FTS over artifact fingerprints (skeleton_hash exact match sufficient for A3)
 - Redaction in artifacts (M6+)
+
+---
+
+## M7: History Import (hx import --file)
+
+**Goal:** Ingest existing shell history files (zsh, bash, plain). Preserve provenance. Idempotent re-import. Imported events appear in hx find, hx last, hx query. Design: `docs/ARCHITECTURE_history_import.md`.
+
+### Schema extensions (migration 002)
+
+**events:** add columns
+
+| Column          | Type | Nullable | Default  | Description                    |
+|-----------------|------|----------|----------|--------------------------------|
+| origin          | TEXT | N        | 'live'   | `live` \| `import`             |
+| quality_tier    | TEXT | Y        | NULL     | `high` \| `medium` \| `low`    |
+| source_file     | TEXT | Y        | NULL     | Path to imported file         |
+| source_host     | TEXT | Y        | NULL     | User-provided host label       |
+| import_batch_id | TEXT | Y        | NULL     | UUID per import run            |
+
+**sessions:** add columns
+
+| Column          | Type | Nullable | Default  | Description                    |
+|-----------------|------|----------|----------|--------------------------------|
+| origin          | TEXT | N        | 'live'   | `live` \| `import`             |
+| import_batch_id | TEXT | Y        | NULL     | Set for import sessions        |
+| source_file     | TEXT | Y        | NULL     | For import sessions            |
+
+**New tables**
+
+```sql
+CREATE TABLE import_batches (
+  batch_id TEXT PRIMARY KEY,
+  source_file TEXT NOT NULL,
+  source_shell TEXT NOT NULL,
+  source_host TEXT,
+  imported_at REAL NOT NULL,
+  event_count INTEGER NOT NULL
+);
+
+CREATE TABLE import_dedup (
+  dedup_hash TEXT PRIMARY KEY
+);
+```
+
+### Parser contracts (TDD-first)
+
+| Function                | Input              | Output                                      |
+|-------------------------|--------------------|---------------------------------------------|
+| ParseZshExtended        | line string        | (cmd, startedAt, durationSec, ok)           |
+| ParseBashTimestamped   | lines, index       | (cmd, startedAt, ok) — consumes #line + next |
+| ParsePlain              | line string        | (cmd, ok)                                   |
+| DetectFormat            | first N lines      | zsh \| bash \| plain                        |
+
+**Format detection:** If `: \d+:\d+;` → zsh. If `#\d{9,}` → bash. Else → plain.
+
+### Task list (ordered)
+
+| ID   | Task                                                                 | Deps   | TDD note                                           |
+|------|----------------------------------------------------------------------|--------|----------------------------------------------------|
+| M7.1 | Migration 002: ALTER events/sessions; CREATE import_batches, import_dedup | —      | Unit: apply, verify columns/tables exist           |
+| M7.2 | internal/history: ParseZshExtended, DetectFormat                      | —      | Unit: fixture lines → cmd, started_at, duration     |
+| M7.3 | internal/history: ParseBashTimestamped                               | —      | Unit: `#1625963751` + next line                    |
+| M7.4 | internal/history: ParsePlain                                         | —      | Unit: plain line → cmd                             |
+| M7.5 | internal/import: dedup hash (source_file+line_num+cmd), skip/record   | M7.1   | Unit: insert hash, re-check skips                  |
+| M7.6 | store: InsertImportEvent (origin, quality_tier, etc.); EnsureImportSession | M7.1   | Unit: insert import event, verify FTS, session     |
+| M7.7 | internal/import: pipeline (read file, parse, dedupe, session, insert) | M7.2–M7.6 | Integration: fixture file → DB, assert event_count |
+| M7.8 | hx import --file path [--host label] [--shell zsh\|bash\|auto]       | M7.7   | Manual: import .zsh_history, hx find               |
+| M7.9 | Wire hx import into cmd/hx main                                      | M7.8   | Manual                                             |
+
+### Dependency graph
+
+```
+M7.1 ──┬─→ M7.5 ──→ M7.7
+       └─→ M7.6 ──────→ M7.7
+M7.2 ──┬─→ M7.7
+M7.3 ──┴─→ M7.7
+M7.4 ──────→ M7.7
+M7.7 ──→ M7.8 ──→ M7.9
+```
+
+### Tests to write first (TDD)
+
+1. **M7.2:** `ParseZshExtended(": 1458291931:15;make test")` → cmd="make test", startedAt=1458291931, durationSec=15
+2. **M7.3:** `ParseBashTimestamped(lines, 0)` with `#1625963751` + `make test` → cmd, startedAt
+3. **M7.4:** `ParsePlain("make test")` → cmd, ok
+4. **M7.5:** Insert dedup_hash; same hash on second pass → skip
+5. **M7.6:** InsertImportEvent with quality_tier=high; query events_fts → match
+
+### Suggested sprint slices
+
+**Slice A (schema + parsers):**
+1. M7.1 (migration)
+2. M7.2 (zsh parser + format detection)
+3. M7.3 (bash parser)
+4. M7.4 (plain parser)
+5. Unit tests for all parsers
+
+**Slice B (import pipeline):**
+1. M7.5 (dedup)
+2. M7.6 (store extensions)
+3. M7.7 (pipeline)
+4. Integration: temp .zsh_history → import → sqlite3 SELECT
+
+**Slice C (CLI):**
+1. M7.8 (hx import cmd)
+2. M7.9 (wire)
+3. Manual: hx import --file ~/.zsh_history, hx find "make", hx last
+
+### Risk ordering
+
+| Risk                    | Mitigation                                              |
+|-------------------------|---------------------------------------------------------|
+| Mixed formats in file   | Best-effort; use first-detected format                  |
+| Huge file OOM           | Cap 100k lines per import; warn if truncated            |
+| Corrupt line            | Skip, increment skipped count; continue                 |
+| Path normalization      | Use path as provided; dedup by (source_file, line_num, cmd) |
+| FTS for import events   | Same path as live; InsertImportEvent populates events_fts |
+
+### Failure modes (from design)
+
+| Failure           | Mitigation                               |
+|-------------------|------------------------------------------|
+| Corrupt line      | Skip, log count of skipped               |
+| Duplicate import  | Dedupe; skip existing                    |
+| LOW tier (no ts)  | started_at = import batch time; seq order |
+
+### Out of scope for M7
+
+- Cross-device sync/merge implementation
+- Editing source history files
+- Default host: use empty unless `--host`; defer `$HOSTNAME` default to future

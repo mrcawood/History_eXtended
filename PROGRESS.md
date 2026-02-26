@@ -4,12 +4,12 @@
 
 # Current State
 
-- **Codebase:** M1 + M2 + M3 + M4 complete. hx attach --file, hx query --file. Blob store (zstd), artifacts table, skeletonize.
-- **Design:** PRD complete; PLAN.md; M4 in internal/blob, internal/artifact.
+- **Codebase:** M1–M4 + M7 complete. Config loading (internal/config); hx, hx-emit, hxd, blob use config.yaml.
+- **Design:** PRD complete; PLAN.md; M4 in internal/blob, internal/artifact. M7 design in docs/ARCHITECTURE_history_import.md.
 
 # Approval Status
 
-Awaiting user approval to proceed with M7 planning or implementation.
+Awaiting user approval for next milestone.
 
 # Key Decisions
 
@@ -37,7 +37,7 @@ Awaiting user approval to proceed with M7 planning or implementation.
 - [x] Resolve open decisions (Section 16).
 - [x] M0: Config spec (PLAN.md; config.yaml at ~/.config/hx/).
 - [x] M1.1–M1.6: Hooks + hx-emit + spool (Slice A).
-- [ ] M1.7: Config loading in hx-emit/hx (Slice B).
+- [x] M1.7: Config loading (internal/config; hx, hx-emit, hxd, blob use config).
 - [x] M1.8: Install docs (INSTALL.md).
 - [x] M2.1–M2.6: Daemon + SQLite ingestion (Slice A).
 - [x] M2.7: Idempotency (INSERT OR IGNORE; unit test verifies).
@@ -46,7 +46,10 @@ Awaiting user approval to proceed with M7 planning or implementation.
 - [x] M4.1–M4.6: Artifact ingestion, hx attach, hx query --file.
 - [ ] M5: Optional Ollama embeddings + LLM explanations.
 - [ ] M6: Retention + pin/export polish.
-- [ ] M7: History import (`hx import --file`); PRD §9.5; design in docs/ARCHITECTURE_history_import.md.
+- [x] M7 planning: task breakdown in PLAN.md (M7.1–M7.9).
+- [x] M7.1: Migration 002 (events/sessions columns; import_batches, import_dedup).
+- [x] M7.2–M7.4: internal/history parsers (ParseZshExtended, ParseBashTimestamped, ParsePlain, DetectFormat).
+- [x] M7.5–M7.9: dedup, store extensions, pipeline, hx import CLI.
 
 # Open Questions
 
@@ -54,7 +57,7 @@ Awaiting user approval to proceed with M7 planning or implementation.
 
 # Technical Context
 
-- **Repo structure:** `cmd/hx/`, `cmd/hx-emit/`, `cmd/hxd/`; `internal/db/`, `internal/store/`, `internal/spool/`, `internal/ingest/`; `migrations/`; `src/hooks/hx.zsh`.
+- **Repo structure:** `cmd/hx/`, `cmd/hx-emit/`, `cmd/hxd/`; `internal/config/`, `internal/db/`, `internal/store/`, `internal/spool/`, `internal/ingest/`, `internal/history/`, `internal/imp/`; `migrations/`; `src/hooks/hx.zsh`.
 - **Components:** C1–C7 per PRD (hooks, emitter, spool, daemon, SQLite, blob store, query engine).
 - **Commands:** `hx status`, `hx pause`/`resume`, `hx last`, `hx find`, `hx query`, `hx attach`, `hx import` (M7), `hx export`.
 - **Configs:** Retention (12 mo events, 90 d blobs), spool path (e.g. `/tmp/hx/...`), blob store (`$XDG_DATA_HOME/hx/blobs`), ignore/allowlist rules.
@@ -72,16 +75,20 @@ Awaiting user approval to proceed with M7 planning or implementation.
 # Recent Changes (Today)
 
 - Architect: History import feature added to PRD (§9.5). Design doc: docs/ARCHITECTURE_history_import.md. Record quality tiers (HIGH/MEDIUM/LOW), provenance schema, `hx import` CLI. M7 milestone added.
+- Planner: M7 task breakdown added to PLAN.md. Nine tasks (M7.1–M7.9): migration, parsers, dedup, store extensions, pipeline, CLI. Three sprint slices (A: schema+parsers, B: pipeline, C: CLI). TDD tests specified.
+- Developer: M7 Slice A complete. Migration 002, internal/history parsers. Unit tests.
+- Developer: M7 Slice B+C complete. internal/imp, hx import CLI. Manual test passed.
+- Developer: M1.7 complete. internal/config: Load() from $XDG_CONFIG_HOME/hx/config.yaml; path expansion ($XDG_DATA_HOME, $HOME); env overrides. hx, hx-emit, hxd, blob use config.
 
 # Proposed Next Step (Requires Approval)
 
-**Recommendation:** Enter **Planner** mode to produce M7 task breakdown (schema migration, parsers, import pipeline, `hx import` CLI).
+**Recommendation:** Consider M5 (Ollama embeddings) or M6 (retention + pin/export). Both need planning.
 
-**Justification:** Design is complete; implementation needs ordered tasks (migration, zsh parser, bash parser, plain fallback, dedupe, wire CLI).
+**Justification:** M1 and M7 complete. M5/M6 are next in PLAN summary.
 
 **Confidence:** High.
 
-**Alternatives:** Proceed to M7 implementation if design is deemed sufficient without explicit planning; or pause to manual-test M4 first.
+**Alternatives:** Document hx import and config in INSTALL.md; add M5/M6 task breakdown; manual test config override.
 
 ---
 

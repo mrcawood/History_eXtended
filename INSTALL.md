@@ -1,4 +1,4 @@
-# hx Install Guide (M1)
+# hx Install Guide
 
 ## Prerequisites
 
@@ -31,6 +31,11 @@ hxd &
 ```
 
 `hx status` shows daemon health (running / not running) and DB path. `hx dump` prints the last 20 ingested events (no sqlite3 CLI needed).
+
+## Search and sessions
+
+- **hx find \<text\>** — full-text search over command history (FTS5). Returns matching events with session, seq, exit code, cwd.
+- **hx last** — last session summary; highlights failures (exit ≠ 0) with 1–2 commands before/after.
 
 ## Enable capture (zsh)
 
@@ -76,6 +81,35 @@ You should see `pre` and `post` events for each command.
 - Daemon PID: `$XDG_DATA_HOME/hx/hxd.pid`
 
 Override with `HX_SPOOL_DIR`, `HX_DB_PATH`, `HX_BLOB_DIR` if needed.
+
+## Config
+
+Optional config at `~/.config/hx/config.yaml` (or `$XDG_CONFIG_HOME/hx/config.yaml`):
+
+```yaml
+# Paths (defaults use $XDG_DATA_HOME/hx/...)
+# spool_dir: $XDG_DATA_HOME/hx/spool
+# blob_dir: $XDG_DATA_HOME/hx/blobs
+# db_path: $XDG_DATA_HOME/hx/hx.db
+
+retention_events_months: 12
+retention_blobs_days: 90
+blob_disk_cap_gb: 2.0
+```
+
+Copy `config/config.yaml.example` and edit. Env vars `HX_SPOOL_DIR`, `HX_BLOB_DIR`, `HX_DB_PATH` override config.
+
+## History import
+
+Import existing shell history (zsh extended, bash timestamped, or plain):
+
+```bash
+hx import --file ~/.zsh_history
+hx import --file ~/.bash_history --shell bash
+hx import --file history.txt --host my-laptop
+```
+
+Re-importing the same file is idempotent (duplicates skipped). Imported events appear in `hx find` and `hx last`.
 
 ## Artifacts (hx attach, hx query)
 
