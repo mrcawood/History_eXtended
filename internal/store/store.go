@@ -79,6 +79,40 @@ func (s *Store) UpdateSessionEnded(sessionID string, endedAt float64) error {
 	return err
 }
 
+// EnsureImportSession creates an import session. host may be empty.
+func (s *Store) EnsureImportSession(sessionID, batchID, sourceFile, host string, startedAt float64) error {
+	if host == "" {
+		host = "import"
+	}
+	_, err := s.db.Exec(
+		`INSERT OR IGNORE INTO sessions (session_id, started_at, host, origin, import_batch_id, source_file) VALUES (?, ?, ?, 'import', ?, ?)`,
+		sessionID, startedAt, host, batchID, sourceFile,
+	)
+	return err
+}
+
+// InsertImportEvent inserts an import event with provenance. Populates events_fts.
+// qualityTier: "high", "medium", or "low". durationMs may be 0 for unknown.
+func (s *Store) InsertImportEvent(cmd string, startedAt float64, durationMs int64, seq int, sessionID string, cmdID int64, qualityTier, sourceFile, sourceHost, batchID string) (bool, error) {
+	endedAt := startedAt
+	if durationMs > 0 {
+		endedAt = startedAt + float64(durationMs)/1000
+	}
+	res, err := s.db.Exec(
+		`INSERT OR IGNORE INTO events (session_id, seq, started_at, ended_at, duration_ms, exit_code, pipe_status_json, cwd, cmd_id, origin, quality_tier, source_file, source_host, import_batch_id) VALUES (?, ?, ?, ?, ?, NULL, '[]', '', ?, 'import', ?, ?, ?, ?)`,
+		sessionID, seq, startedAt, endedAt, durationMs, cmdID, qualityTier, sourceFile, sourceHost, batchID,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	if n > 0 {
+		eventID, _ := res.LastInsertId()
+		_, _ = s.db.Exec(`INSERT INTO events_fts(rowid, cmd_text, cwd) VALUES (?, ?, ?)`, eventID, cmd, "")
+	}
+	return n > 0, nil
+}
+
 // InsertEvent inserts an event. Uses INSERT OR IGNORE for idempotency.
 // Returns true if a row was inserted, false if ignored (duplicate).
 // When inserted, also populates events_fts for FTS search.

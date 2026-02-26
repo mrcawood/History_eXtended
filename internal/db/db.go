@@ -40,7 +40,61 @@ func migrate(conn *sql.DB) error {
 	if err := migrateBlobsArtifacts(conn); err != nil {
 		return fmt.Errorf("migrate blobs/artifacts: %w", err)
 	}
+	if err := migrateImport(conn); err != nil {
+		return fmt.Errorf("migrate import: %w", err)
+	}
 	return nil
+}
+
+func migrateImport(conn *sql.DB) error {
+	// Check if events.origin exists (M7 already applied)
+	var count int
+	err := conn.QueryRow("SELECT COUNT(*) FROM pragma_table_info('events') WHERE name='origin'").Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		// M7 columns exist; ensure import tables exist
+		_, err := conn.Exec(`
+			CREATE TABLE IF NOT EXISTS import_batches (
+				batch_id TEXT PRIMARY KEY,
+				source_file TEXT NOT NULL,
+				source_shell TEXT NOT NULL,
+				source_host TEXT,
+				imported_at REAL NOT NULL,
+				event_count INTEGER NOT NULL
+			);
+			CREATE TABLE IF NOT EXISTS import_dedup (dedup_hash TEXT PRIMARY KEY);
+		`)
+		return err
+	}
+	// Add M7 columns
+	for _, q := range []string{
+		`ALTER TABLE events ADD COLUMN origin TEXT NOT NULL DEFAULT 'live'`,
+		`ALTER TABLE events ADD COLUMN quality_tier TEXT`,
+		`ALTER TABLE events ADD COLUMN source_file TEXT`,
+		`ALTER TABLE events ADD COLUMN source_host TEXT`,
+		`ALTER TABLE events ADD COLUMN import_batch_id TEXT`,
+		`ALTER TABLE sessions ADD COLUMN origin TEXT NOT NULL DEFAULT 'live'`,
+		`ALTER TABLE sessions ADD COLUMN import_batch_id TEXT`,
+		`ALTER TABLE sessions ADD COLUMN source_file TEXT`,
+	} {
+		if _, err := conn.Exec(q); err != nil {
+			return fmt.Errorf("%s: %w", q, err)
+		}
+	}
+	_, err = conn.Exec(`
+		CREATE TABLE IF NOT EXISTS import_batches (
+			batch_id TEXT PRIMARY KEY,
+			source_file TEXT NOT NULL,
+			source_shell TEXT NOT NULL,
+			source_host TEXT,
+			imported_at REAL NOT NULL,
+			event_count INTEGER NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS import_dedup (dedup_hash TEXT PRIMARY KEY);
+	`)
+	return err
 }
 
 func migrateBlobsArtifacts(conn *sql.DB) error {

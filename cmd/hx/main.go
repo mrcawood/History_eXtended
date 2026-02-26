@@ -12,38 +12,62 @@ import (
 	"syscall"
 
 	"github.com/history-extended/hx/internal/artifact"
+	"github.com/history-extended/hx/internal/config"
 	"github.com/history-extended/hx/internal/db"
+	"github.com/history-extended/hx/internal/imp"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func xdgDataHome() string {
-	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
-		return v
+func getConfig() *config.Config {
+	c, err := config.Load()
+	if err != nil {
+		return nil
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share")
+	return c
 }
 
 func pausedFile() string {
-	return filepath.Join(xdgDataHome(), "hx", ".paused")
+	if c := getConfig(); c != nil {
+		return filepath.Join(filepath.Dir(c.SpoolDir), ".paused")
+	}
+	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
+		return filepath.Join(v, "hx", ".paused")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hx", ".paused")
 }
 
 func spoolDir() string {
+	if c := getConfig(); c != nil {
+		return c.SpoolDir
+	}
 	if v := os.Getenv("HX_SPOOL_DIR"); v != "" {
 		return v
 	}
-	return filepath.Join(xdgDataHome(), "hx", "spool")
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hx", "spool")
 }
 
 func dbPath() string {
+	if c := getConfig(); c != nil {
+		return c.DbPath
+	}
 	if v := os.Getenv("HX_DB_PATH"); v != "" {
 		return v
 	}
-	return filepath.Join(xdgDataHome(), "hx", "hx.db")
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hx", "hx.db")
 }
 
 func pidFile() string {
-	return filepath.Join(xdgDataHome(), "hx", "hxd.pid")
+	if c := getConfig(); c != nil {
+		return filepath.Join(filepath.Dir(c.DbPath), "hxd.pid")
+	}
+	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
+		return filepath.Join(v, "hx", "hxd.pid")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hx", "hxd.pid")
 }
 
 func daemonRunning() bool {
@@ -362,6 +386,54 @@ func cmdQuery(args []string) {
 	}
 }
 
+func cmdImport(args []string) {
+	var filePath, host, shell string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--file", "-f":
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "hx import: --file requires path\n")
+				os.Exit(1)
+			}
+			filePath = args[i+1]
+			i++
+		case "--host":
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "hx import: --host requires value\n")
+				os.Exit(1)
+			}
+			host = args[i+1]
+			i++
+		case "--shell":
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "hx import: --shell requires zsh|bash|auto\n")
+				os.Exit(1)
+			}
+			shell = args[i+1]
+			i++
+		}
+	}
+	if filePath == "" {
+		fmt.Fprintf(os.Stderr, "hx import: usage: hx import --file <path> [--host label] [--shell zsh|bash|auto]\n")
+		os.Exit(1)
+	}
+	if shell == "" {
+		shell = "auto"
+	}
+	conn, err := db.Open(dbPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx import: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+	inserted, skipped, err := imp.Run(conn, filePath, host, shell)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx import: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Imported %d events (skipped %d duplicates)\n", inserted, skipped)
+}
+
 func cmdDump() {
 	conn, err := db.Open(dbPath())
 	if err != nil {
@@ -412,7 +484,7 @@ func cmdDump() {
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("hx: History eXtended - terminal flight recorder")
-		fmt.Println("Usage: hx <status|pause|resume|last|dump|find|attach|query>")
+		fmt.Println("Usage: hx <status|pause|resume|last|dump|find|attach|query|import>")
 		os.Exit(0)
 	}
 	switch os.Args[1] {
@@ -436,6 +508,8 @@ func main() {
 		cmdAttach(os.Args[2:])
 	case "query":
 		cmdQuery(os.Args[2:])
+	case "import":
+		cmdImport(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "hx: unknown command %q\n", os.Args[1])
 		os.Exit(1)
