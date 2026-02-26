@@ -74,11 +74,12 @@ Awaiting user approval for next milestone.
 
 # Recent Changes (Today)
 
+- Stabilization: feature/m7-history-import branch, 5 commits (M7, M1.7, docs, tests). README, INSTALL expanded. Test coverage: blob 39%, spool 83%, store 50%, artifact 57%.
 - Architect: History import feature added to PRD (§9.5). Design doc: docs/ARCHITECTURE_history_import.md. Record quality tiers (HIGH/MEDIUM/LOW), provenance schema, `hx import` CLI. M7 milestone added.
 - Planner: M7 task breakdown added to PLAN.md. Nine tasks (M7.1–M7.9): migration, parsers, dedup, store extensions, pipeline, CLI. Three sprint slices (A: schema+parsers, B: pipeline, C: CLI). TDD tests specified.
 - Developer: M7 Slice A complete. Migration 002, internal/history parsers. Unit tests.
 - Developer: M7 Slice B+C complete. internal/imp, hx import CLI. Manual test passed.
-- Developer: M1.7 complete. internal/config: Load() from $XDG_CONFIG_HOME/hx/config.yaml; path expansion ($XDG_DATA_HOME, $HOME); env overrides. hx, hx-emit, hxd, blob use config.
+- Developer: M1.7 complete. internal/config, hx/hx-emit/hxd/blob use config.
 
 # Proposed Next Step (Requires Approval)
 
@@ -88,7 +89,7 @@ Awaiting user approval for next milestone.
 
 **Confidence:** High.
 
-**Alternatives:** Document hx import and config in INSTALL.md; add M5/M6 task breakdown; manual test config override.
+**Alternatives:** Add M5/M6 task breakdown; proceed to M5 or M6 implementation.
 
 ---
 
