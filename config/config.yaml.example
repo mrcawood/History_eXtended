@@ -1,6 +1,7 @@
 # hx config example
 # Copy to ~/.config/hx/config.yaml (or $XDG_CONFIG_HOME/hx/config.yaml)
 # Env overrides: HX_SPOOL_DIR, HX_BLOB_DIR, HX_DB_PATH
+# Paths support $XDG_DATA_HOME, $HOME
 
 # spool_dir: $XDG_DATA_HOME/hx/spool
 # blob_dir: $XDG_DATA_HOME/hx/blobs

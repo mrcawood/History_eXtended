@@ -9,36 +9,47 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/history-extended/hx/internal/config"
 	"github.com/history-extended/hx/internal/db"
 	"github.com/history-extended/hx/internal/ingest"
 	"github.com/history-extended/hx/internal/spool"
 	"github.com/history-extended/hx/internal/store"
 )
 
-func xdgDataHome() string {
-	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
-		return v
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share")
-}
-
 func dbPath() string {
+	c, err := config.Load()
+	if err == nil {
+		return c.DbPath
+	}
 	if v := os.Getenv("HX_DB_PATH"); v != "" {
 		return v
 	}
-	return filepath.Join(xdgDataHome(), "hx", "hx.db")
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hx", "hx.db")
 }
 
 func spoolDir() string {
+	c, err := config.Load()
+	if err == nil {
+		return c.SpoolDir
+	}
 	if v := os.Getenv("HX_SPOOL_DIR"); v != "" {
 		return v
 	}
-	return filepath.Join(xdgDataHome(), "hx", "spool")
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hx", "spool")
 }
 
 func pidPath() string {
-	return filepath.Join(xdgDataHome(), "hx", "hxd.pid")
+	c, err := config.Load()
+	if err == nil {
+		return filepath.Join(filepath.Dir(c.DbPath), "hxd.pid")
+	}
+	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
+		return filepath.Join(v, "hx", "hxd.pid")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hx", "hxd.pid")
 }
 
 func writePid(path string) error {

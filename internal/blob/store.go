@@ -9,11 +9,16 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/history-extended/hx/internal/config"
 	"github.com/klauspost/compress/zstd"
 )
 
-// BlobDir returns the blob store directory.
+// BlobDir returns the blob store directory (from config, env, or default).
 func BlobDir() string {
+	c, err := config.Load()
+	if err == nil {
+		return c.BlobDir
+	}
 	if v := os.Getenv("HX_BLOB_DIR"); v != "" {
 		return v
 	}

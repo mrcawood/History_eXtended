@@ -11,25 +11,32 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/history-extended/hx/internal/config"
 )
 
-func xdgDataHome() string {
-	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
-		return v
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share")
-}
-
 func spoolDir() string {
+	c, err := config.Load()
+	if err == nil {
+		return c.SpoolDir
+	}
 	if v := os.Getenv("HX_SPOOL_DIR"); v != "" {
 		return v
 	}
-	return filepath.Join(xdgDataHome(), "hx", "spool")
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hx", "spool")
 }
 
 func pausedFile() string {
-	return filepath.Join(xdgDataHome(), "hx", ".paused")
+	c, err := config.Load()
+	if err == nil {
+		return filepath.Join(filepath.Dir(c.SpoolDir), ".paused")
+	}
+	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
+		return filepath.Join(v, "hx", ".paused")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hx", ".paused")
 }
 
 func isPaused() bool {
