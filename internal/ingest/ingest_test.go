@@ -34,7 +34,7 @@ func TestRun(t *testing.T) {
 	defer conn.Close()
 
 	st := store.New(conn)
-	n, err := Run(st, spoolPath)
+	n, err := Run(st, spoolPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestRun(t *testing.T) {
 	}
 
 	// Idempotency: run again, should still have 2 (no new inserts, no duplicate rows)
-	n2, err := Run(st, spoolPath)
+	n2, err := Run(st, spoolPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

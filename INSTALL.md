@@ -96,6 +96,11 @@ retention_events_months: 12
 retention_blobs_days: 90
 blob_disk_cap_gb: 2.0
 
+# Privacy: allowlist or ignore patterns (optional)
+# allowlist_mode: true   # capture only listed binaries
+# allowlist_bins: [git, make, cmake, pytest, srun, sbatch]
+# ignore_patterns: ['*password*', '*secret*']   # shell globs; matched commands are not captured
+
 # Ollama (M5) - optional semantic search
 # ollama_enabled: true
 # ollama_base_url: http://localhost:11434
@@ -104,6 +109,9 @@ blob_disk_cap_gb: 2.0
 ```
 
 Copy `config/config.yaml.example` and edit. Env vars `HX_SPOOL_DIR`, `HX_BLOB_DIR`, `HX_DB_PATH` override config.
+
+- **allowlist_mode:** When true, capture only commands whose first token (binary) is in `allowlist_bins`. Use for conservative capture.
+- **ignore_patterns:** Shell globs (e.g. `*password*`) to skip; any command matching a pattern is not captured.
 
 ## History import
 

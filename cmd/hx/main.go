@@ -121,6 +121,14 @@ func cmdStatus() {
 	if eventsExist {
 		fmt.Printf("  events:  %s\n", eventsPath)
 	}
+	cfg := getConfig()
+	if cfg != nil {
+		if cfg.AllowlistMode {
+			fmt.Printf("  allowlist: on (%v)\n", cfg.AllowlistBins)
+		} else if len(cfg.IgnorePatterns) > 0 {
+			fmt.Printf("  ignore: %v\n", cfg.IgnorePatterns)
+		}
+	}
 }
 
 func cmdPause() {
@@ -516,10 +524,13 @@ func cmdImport(args []string) {
 		os.Exit(1)
 	}
 	defer conn.Close()
-	inserted, skipped, err := imp.Run(conn, filePath, host, shell)
+	inserted, skipped, truncated, err := imp.Run(conn, filePath, host, shell)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hx import: %v\n", err)
 		os.Exit(1)
+	}
+	if truncated {
+		fmt.Fprintf(os.Stderr, "hx import: file truncated at %d lines (use smaller file or increase limit)\n", imp.MaxLines)
 	}
 	fmt.Printf("Imported %d events (skipped %d duplicates)\n", inserted, skipped)
 }

@@ -74,6 +74,7 @@ Awaiting user approval for next milestone.
 
 # Recent Changes (Today)
 
+- Polish: blob_disk_cap_gb enforced in PruneBlobs; import truncation warning at 100k lines; allowlist/ignore_patterns applied at ingest; hx status shows allowlist/ignore state. internal/filter; ingest accepts config.
 - Developer: M6 complete. Retention pruning (events 12mo, blobs 90d), hx pin, hxd retention loop every 10min, hx forget --since, hx export --redacted. internal/retention, internal/export. sessions.pinned migration.
 - Planner: M6 task breakdown added to PLAN.md. Eight tasks (M6.1–M6.8): migration (sessions.pinned), hx pin, PruneEvents, PruneBlobs, hxd retention loop, hx forget, hx export, wire. Two sprint slices (A: pin+retention, B: forget+export).
 - Developer: M5 complete. Ollama embeddings + LLM explanations. `hx query "<question>"` with semantic re-rank and optional summary. internal/ollama client, internal/query pipeline. Config: ollama_enabled, ollama_base_url, ollama_embed_model, ollama_chat_model. Graceful fallback when Ollama unavailable.
@@ -86,13 +87,13 @@ Awaiting user approval for next milestone.
 
 # Proposed Next Step (Requires Approval)
 
-**Recommendation:** Phase 1 feature set complete. Consider polish (blob_disk_cap enforcement, export tests) or new milestones.
+**Recommendation:** Phase 1 complete. Polish items done: blob_disk_cap enforcement, import truncation warning, allowlist/ignore in daemon and status.
 
-**Justification:** M6 implemented. All PLAN Phase 1 milestones (M0–M7) complete.
+**Justification:** M6 implemented. All PLAN Phase 1 milestones (M0–M7) complete. Retention enforces blob_disk_cap_gb; import warns when truncated; allowlist and ignore_patterns applied at ingest; hx status shows allowlist/ignore state.
 
 **Confidence:** High.
 
-**Alternatives:** Add M6 integration tests; document retention behavior in INSTALL.
+**Alternatives:** Add export tests; new milestones.
 
 ---
 

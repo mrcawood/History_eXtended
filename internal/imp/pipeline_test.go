@@ -28,7 +28,7 @@ func TestRunZsh(t *testing.T) {
 	}
 	defer conn.Close()
 
-	inserted, skipped, err := Run(conn, historyPath, "", "zsh")
+	inserted, skipped, _, err := Run(conn, historyPath, "", "zsh")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestRunZsh(t *testing.T) {
 	}
 
 	// Re-import: should dedupe
-	inserted2, _, err := Run(conn, historyPath, "", "zsh")
+	inserted2, _, _, err := Run(conn, historyPath, "", "zsh")
 	if err != nil {
 		t.Fatalf("Run 2: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestRunPlain(t *testing.T) {
 	}
 	defer conn.Close()
 
-	inserted, _, err := Run(conn, historyPath, "myhost", "plain")
+	inserted, _, _, err := Run(conn, historyPath, "myhost", "plain")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -103,7 +103,7 @@ ls -la
 	}
 	defer conn.Close()
 
-	inserted, _, err := Run(conn, historyPath, "", "bash")
+	inserted, _, _, err := Run(conn, historyPath, "", "bash")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

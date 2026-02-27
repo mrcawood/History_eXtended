@@ -11,10 +11,10 @@ retention_events_months: 12
 retention_blobs_days: 90
 blob_disk_cap_gb: 2.0
 
+# Privacy: allowlist (capture only listed binaries) or ignore patterns (skip matching commands)
 allowlist_mode: false
 # allowlist_bins: [git, make, cmake, pytest, srun, sbatch]
-
-# ignore_patterns: ['*password*', '*secret*']
+# ignore_patterns: ['*password*', '*secret*']   # shell globs; applied when allowlist_mode is false
 
 # Ollama (M5) - optional semantic search and LLM explanations
 # ollama_enabled: true

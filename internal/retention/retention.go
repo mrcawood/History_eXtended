@@ -169,7 +169,39 @@ func PruneBlobs(conn *sql.DB, blobDir string, cfg *config.Config) (int64, error)
 		deleted += n
 	}
 
-	// TODO: blob_disk_cap_gb - if over cap, delete oldest blobs until under
+	// Enforce blob_disk_cap_gb: delete oldest blobs until under cap
+	if cfg.BlobDiskCapGB > 0 {
+		capBytes := int64(cfg.BlobDiskCapGB * 1e9)
+		for {
+			var total int64
+			err := conn.QueryRow(`SELECT COALESCE(SUM(byte_len), 0) FROM blobs`).Scan(&total)
+			if err != nil || total <= capBytes {
+				break
+			}
+			// Find oldest blob not referenced by artifacts linked to pinned sessions
+			var sha, path string
+			var byteLen int64
+			err = conn.QueryRow(`
+				SELECT b.sha256, b.storage_path, b.byte_len FROM blobs b
+				WHERE b.sha256 NOT IN (
+					SELECT a.sha256 FROM artifacts a
+					JOIN sessions s ON s.session_id = a.linked_session_id
+					WHERE s.pinned = 1
+				)
+				ORDER BY b.created_at ASC LIMIT 1
+			`).Scan(&sha, &path, &byteLen)
+			if err != nil {
+				break
+			}
+			if !filepath.IsAbs(path) && blobDir != "" {
+				path = filepath.Join(blobDir, path)
+			}
+			_ = os.Remove(path)
+			conn.Exec(`DELETE FROM artifacts WHERE sha256 = ?`, sha)
+			conn.Exec(`DELETE FROM blobs WHERE sha256 = ?`, sha)
+			deleted++
+		}
+	}
 	return deleted, nil
 }
 

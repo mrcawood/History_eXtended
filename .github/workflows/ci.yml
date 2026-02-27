@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build
+        run: go build -tags sqlite_fts5 -o /dev/null ./cmd/hx ./cmd/hxd ./cmd/hx-emit
+
+      - name: Test
+        run: go test -tags sqlite_fts5 -v ./...

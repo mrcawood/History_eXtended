@@ -15,19 +15,24 @@ import (
 
 const maxLines = 100_000
 
-// Run imports a history file. Returns number of events inserted.
-func Run(db *sql.DB, sourceFile, sourceHost, sourceShell string) (int, int, error) {
+// MaxLines is the import line cap (exported for CLI messages).
+const MaxLines = maxLines
+
+// Run imports a history file. Returns (inserted, skipped, truncated, error).
+// truncated is true when the file exceeded maxLines and was truncated.
+func Run(db *sql.DB, sourceFile, sourceHost, sourceShell string) (int, int, bool, error) {
 	path, err := filepath.Abs(sourceFile)
 	if err != nil {
 		path = sourceFile
 	}
 	lines, err := readLines(path)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
+	truncated := false
 	if len(lines) > maxLines {
 		lines = lines[:maxLines]
-		// TODO: warn truncated
+		truncated = true
 	}
 
 	shell := sourceShell
@@ -37,14 +42,14 @@ func Run(db *sql.DB, sourceFile, sourceHost, sourceShell string) (int, int, erro
 
 	batchID, err := newBatchID()
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
 	sessionID := "import-" + batchID
 	st := store.New(db)
 
 	importedAt := float64(time.Now().Unix())
 	if err := st.EnsureImportSession(sessionID, batchID, path, sourceHost, importedAt); err != nil {
-		return 0, 0, err
+		return 0, 0, false, err
 	}
 
 	var inserted, skipped int
@@ -160,7 +165,7 @@ func Run(db *sql.DB, sourceFile, sourceHost, sourceShell string) (int, int, erro
 		batchID, path, shell, sourceHost, importedAt, inserted,
 	)
 
-	return inserted, skipped, nil
+	return inserted, skipped, truncated, nil
 }
 
 func readLines(path string) ([]string, error) {

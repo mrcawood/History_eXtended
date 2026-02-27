@@ -3,13 +3,16 @@ package ingest
 import (
 	"fmt"
 
+	"github.com/history-extended/hx/internal/config"
+	"github.com/history-extended/hx/internal/filter"
 	"github.com/history-extended/hx/internal/spool"
 	"github.com/history-extended/hx/internal/store"
 )
 
 // Run reads events from spool, pairs pre+post, inserts into DB.
 // Idempotent: INSERT OR IGNORE on events.
-func Run(st *store.Store, eventsPath string) (int, error) {
+// If cfg is non-nil, applies ignore_patterns and allowlist_mode before inserting.
+func Run(st *store.Store, eventsPath string, cfg *config.Config) (int, error) {
 	events, err := spool.Read(eventsPath)
 	if err != nil {
 		return 0, err
@@ -44,6 +47,10 @@ func Run(st *store.Store, eventsPath string) (int, error) {
 			continue
 		}
 		delete(preBuf, key)
+
+		if !filter.ShouldCapture(pre.Cmd, cfg) {
+			continue
+		}
 
 		if err := st.EnsureSession(pre.Sid, pre.Host, pre.Tty, pre.Cwd, pre.Ts); err != nil {
 			continue

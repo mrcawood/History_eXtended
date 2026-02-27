@@ -85,7 +85,7 @@ func main() {
 	tick := 3 * time.Second
 	pruneInterval := 10 * time.Minute
 	for {
-		n, err := ingest.Run(st, eventsPath)
+		n, err := ingest.Run(st, eventsPath, cfg)
 		if err != nil {
 			os.Stderr.WriteString("hxd: ingest: " + err.Error() + "\n")
 		}
