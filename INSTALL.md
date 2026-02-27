@@ -127,11 +127,16 @@ Re-importing the same file is idempotent (duplicates skipped). Imported events a
 
 ## Retention and privacy (M6)
 
-- **Pin session:** `hx pin --last` or `hx pin --session <SID>` — exempt from retention pruning
-- **Forget window:** `hx forget --since 15m` (or 1h, 24h, 7d) — hard-delete events in that window
-- **Export:** `hx export --last --redacted` — markdown evidence packet; `--redacted` sanitizes timestamps and tokens
+- **Pin session:** `hx pin --last` or `hx pin --session <SID>` — exempt from retention pruning (events and linked blobs kept)
+- **Forget window:** `hx forget --since 15m` (or 1h, 24h, 7d) — hard-delete events in that window; data is not retrievable after forget
+- **Export:** `hx export --last --redacted` — markdown evidence packet; `--redacted` sanitizes timestamps and tokens for sharing
 
-The daemon (hxd) runs retention pruning every 10 minutes: events older than 12 months (configurable) and blobs older than 90 days. Pinned sessions are never pruned.
+The daemon (hxd) runs retention pruning every 10 minutes:
+- **Events:** older than 12 months (configurable via `retention_events_months`)
+- **Blobs:** older than 90 days (`retention_blobs_days`) **and** blob store capped by `blob_disk_cap_gb` (oldest evicted first)
+- **Pinned sessions:** never pruned (exempt from both events and blob retention)
+
+**Recovery:** After a crash, the daemon replays the spool on restart. Events are ingested idempotently (duplicates skipped). If the spool is corrupted, the daemon skips the bad line and continues. Data in the DB is preserved.
 
 ## Artifacts (hx attach, hx query)
 

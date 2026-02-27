@@ -1,0 +1,8 @@
+Phase 1 Validation Results
+=========================
+Date: 2026-02-26
+Val dir: /tmp/tmp.C6o0rKxct5
+
+A3 hit rate: 25/25
+A5: pause test completed
+A6: forget test completed

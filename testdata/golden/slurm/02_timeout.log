@@ -1,0 +1,2 @@
+slurmstepd: error: *** STEP 67890.0 ON n02 CANCELLED AT 2024-02-16T14:30:00 DUE TO TIME LIMIT ***
+srun: error: Job step 67890.0 terminated on node n02

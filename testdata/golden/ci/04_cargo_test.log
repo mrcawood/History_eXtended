@@ -1,0 +1,9 @@
+running 4 tests
+test tests::integration ... FAILED
+test tests::unit_a ... ok
+test tests::unit_b ... ok
+test tests::unit_c ... ok
+failures:
+---- tests::integration stdout ----
+thread 'tests::integration' panicked at 'assertion failed'
+error: test failed, to panic!

@@ -21,3 +21,9 @@ jobs:
 
       - name: Test
         run: go test -tags sqlite_fts5 -v ./...
+
+      - name: Validate (A1-A7 golden dataset)
+        run: |
+          make build
+          chmod +x scripts/validate.sh
+          ./scripts/validate.sh

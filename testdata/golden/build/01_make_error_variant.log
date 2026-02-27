@@ -1,0 +1,9 @@
+make: Entering directory '/home/user/proj'
+gcc -c -o obj/main.o src/main.c
+src/main.c: In function 'process':
+src/main.c:42:5: error: 'foo' undeclared (first use in this function)
+   42 |     foo = bar + 1;
+      |     ^~~
+compilation terminated.
+make: *** [Makefile:23: obj/main.o] Error 1
+make: Leaving directory '/home/user/proj'

@@ -1,0 +1,4 @@
+2024-02-15T10:32:11.1234567Z ##[group]Run pytest tests
+2024-02-15T10:32:11.2345678Z pytest test_model.py -v
+2024-02-15T10:32:14.3456789Z FAILED test_model.py::test_save - AssertionError: expected 42 got 0
+2024-02-15T10:32:14.4567890Z ##[error]Process completed with exit code 1

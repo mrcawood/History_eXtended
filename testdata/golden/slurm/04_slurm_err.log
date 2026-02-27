@@ -1,0 +1,2 @@
+slurm_spank: error: failed to load plugin
+sbatch: error: Batch job submission failed: Invalid job request

@@ -1,0 +1,6 @@
+error[E0382]: use of moved value: `s`
+   --> src/lib.rs:15:10
+   |
+15 |     let t = s;
+   |             ^ value used here after move
+error: aborting due to previous error

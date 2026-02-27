@@ -1,0 +1,7 @@
+[1/5] Building CXX object CMakeFiles/app.dir/main.cpp.o
+FAILED: CMakeFiles/app.dir/main.cpp.o
+/usr/bin/g++ -std=c++17 -c /home/dev/app/main.cpp -o CMakeFiles/app.dir/main.cpp.o
+main.cpp:19:10: fatal error: 'mylib.h' file not found
+   19 | #include "mylib.h"
+      |          ^~~~~~~~~
+ninja: build failed: subcommand failed

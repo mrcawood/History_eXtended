@@ -1,0 +1,3 @@
+slurmstepd: error: Detected 1 oom-kill event in StepId=12345.0. Exiting.
+srun: error: task 0: Exited with exit code 137
+srun: error: Job step 12345.0 terminated on node n01 with exit code 137

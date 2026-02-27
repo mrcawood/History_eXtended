@@ -1,0 +1,6 @@
+-- The C compiler identification is GNU 11.2.0
+-- The CXX compiler identification is GNU 11.2.0
+-- Configuring done
+CMake Error at CMakeLists.txt:12: message:
+  Required package FOO not found
+-- Configuring incomplete, errors occurred!

@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "worker.py", line 88, in run
+    result = a + b
+TypeError: unsupported operand type(s) for +: 'int' and 'str'

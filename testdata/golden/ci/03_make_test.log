@@ -1,0 +1,5 @@
+=== RUN   TestHandler
+    handler_test.go:42: expected status 200, got 500
+--- FAIL: TestHandler (0.01s)
+FAIL
+exit status 1

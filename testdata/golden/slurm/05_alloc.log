@@ -1,0 +1,4 @@
+salloc: Granted job allocation 99999
+salloc: Waiting for resource configuration
+salloc: Nodes n01,n02,n03 are ready for job
+srun: error: n02: node not responding, terminating job

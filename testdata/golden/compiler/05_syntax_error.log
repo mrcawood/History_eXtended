@@ -1,0 +1,5 @@
+SyntaxError: invalid syntax
+  File "script.py", line 10
+    if x =
+        ^
+SyntaxError: invalid syntax

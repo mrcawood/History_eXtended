@@ -1,0 +1,4 @@
+error: cannot find symbol
+  symbol:   method getValue()
+  location: class Foo
+1 error

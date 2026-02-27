@@ -1,0 +1,4 @@
+Running with gitlab-runner 15.2.3 (abc12345)
+Job succeeded for 3 steps, 1 failed
+Job failed: exit code 1
+ERROR: Job failed: exit code 1

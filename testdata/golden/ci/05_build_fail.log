@@ -1,0 +1,3 @@
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.11.1
+[ERROR] COMPILATION ERROR
+[ERROR] /src/App.java:[15,20] cannot find symbol
