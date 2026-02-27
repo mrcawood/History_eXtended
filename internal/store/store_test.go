@@ -57,3 +57,31 @@ func TestInsertEvent(t *testing.T) {
 		t.Error("duplicate InsertEvent: want false")
 	}
 }
+
+func TestPinSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.db")
+	conn, err := db.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+	st := New(conn)
+
+	pre := &PreEvent{Sid: "pin-s1", Seq: 1, Ts: 1700000000, Cmd: "ls", Cwd: "/x", Tty: "pts/0", Host: "h"}
+	post := &PostEvent{Sid: "pin-s1", Seq: 1, Ts: 1700000001, Exit: 0, DurMs: 1000, Pipe: []int{}}
+	cmdID, _ := st.CmdID(pre.Cmd, pre.Ts)
+	st.EnsureSession(pre.Sid, pre.Host, pre.Tty, pre.Cwd, pre.Ts)
+	st.InsertEvent(pre, post, cmdID)
+
+	if err := st.PinSession("pin-s1"); err != nil {
+		t.Fatalf("PinSession: %v", err)
+	}
+	var pinned int
+	err = conn.QueryRow("SELECT pinned FROM sessions WHERE session_id = 'pin-s1'").Scan(&pinned)
+	if err != nil {
+		t.Fatalf("SELECT pinned: %v", err)
+	}
+	if pinned != 1 {
+		t.Errorf("pinned = %d, want 1", pinned)
+	}
+}

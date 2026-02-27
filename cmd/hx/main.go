@@ -12,13 +12,17 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/history-extended/hx/internal/artifact"
 	"github.com/history-extended/hx/internal/config"
+	"github.com/history-extended/hx/internal/store"
 	"github.com/history-extended/hx/internal/db"
 	"github.com/history-extended/hx/internal/imp"
 	"github.com/history-extended/hx/internal/ollama"
+	"github.com/history-extended/hx/internal/export"
 	"github.com/history-extended/hx/internal/query"
+	"github.com/history-extended/hx/internal/retention"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -520,6 +524,134 @@ func cmdImport(args []string) {
 	fmt.Printf("Imported %d events (skipped %d duplicates)\n", inserted, skipped)
 }
 
+func cmdPin(args []string) {
+	var sessionID string
+	useLast := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--session", "-s":
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "hx pin: --session requires session ID\n")
+				os.Exit(1)
+			}
+			sessionID = args[i+1]
+			i++
+		case "last", "--last":
+			useLast = true
+		}
+	}
+	conn, err := db.Open(dbPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx pin: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+	st := store.New(conn)
+	if useLast && sessionID == "" {
+		sid, err := st.LastSessionID()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "hx pin: %v\n", err)
+			os.Exit(1)
+		}
+		sessionID = sid
+	}
+	if sessionID == "" {
+		fmt.Fprintf(os.Stderr, "hx pin: usage: hx pin --session <SID>   OR   hx pin --last\n")
+		os.Exit(1)
+	}
+	if err := st.PinSession(sessionID); err != nil {
+		if err == sql.ErrNoRows {
+			fmt.Fprintf(os.Stderr, "hx pin: session %q not found\n", sessionID)
+		} else {
+			fmt.Fprintf(os.Stderr, "hx pin: %v\n", err)
+		}
+		os.Exit(1)
+	}
+	fmt.Printf("Pinned session %s\n", sessionID)
+}
+
+func cmdForget(args []string) {
+	var since string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--since" && i+1 < len(args) {
+			since = args[i+1]
+			break
+		}
+	}
+	if since == "" {
+		fmt.Fprintf(os.Stderr, "hx forget: usage: hx forget --since 15m|1h|24h|7d\n")
+		os.Exit(1)
+	}
+	d, err := parseSince(since)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx forget: %v\n", err)
+		os.Exit(1)
+	}
+	conn, err := db.Open(dbPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx forget: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+	n, err := retention.ForgetSince(conn, d)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx forget: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Forgot %d events\n", n)
+}
+
+func parseSince(s string) (time.Duration, error) {
+	if s == "7d" {
+		return 7 * 24 * time.Hour, nil
+	}
+	return time.ParseDuration(s)
+}
+
+func cmdExport(args []string) {
+	sessionID := ""
+	useLast := false
+	redact := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--session", "-s":
+			if i+1 < len(args) {
+				sessionID = args[i+1]
+				i++
+			}
+		case "--last":
+			useLast = true
+		case "--redacted":
+			redact = true
+		}
+	}
+	conn, err := db.Open(dbPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx export: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+	if useLast && sessionID == "" {
+		st := store.New(conn)
+		sid, err := st.LastSessionID()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "hx export: %v\n", err)
+			os.Exit(1)
+		}
+		sessionID = sid
+	}
+	if sessionID == "" {
+		fmt.Fprintf(os.Stderr, "hx export: usage: hx export [--session <SID>|--last] [--redacted]\n")
+		os.Exit(1)
+	}
+	exp, err := export.ExportSession(conn, sessionID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx export: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Print(export.Markdown(exp, redact))
+}
+
 func cmdDump() {
 	conn, err := db.Open(dbPath())
 	if err != nil {
@@ -570,7 +702,7 @@ func cmdDump() {
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("hx: History eXtended - terminal flight recorder")
-		fmt.Println("Usage: hx <status|pause|resume|last|dump|find|attach|query|import>")
+		fmt.Println("Usage: hx <status|pause|resume|last|dump|find|attach|query|import|pin|forget|export>")
 		os.Exit(0)
 	}
 	switch os.Args[1] {
@@ -596,6 +728,12 @@ func main() {
 		cmdQuery(os.Args[2:])
 	case "import":
 		cmdImport(os.Args[2:])
+	case "pin":
+		cmdPin(os.Args[2:])
+	case "forget":
+		cmdForget(os.Args[2:])
+	case "export":
+		cmdExport(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "hx: unknown command %q\n", os.Args[1])
 		os.Exit(1)

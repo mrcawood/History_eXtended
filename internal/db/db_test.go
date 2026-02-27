@@ -58,3 +58,23 @@ func TestMigrateImportIdempotent(t *testing.T) {
 	// Clean up temp file for Windows compatibility
 	os.Remove(path)
 }
+
+func TestMigratePinned(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.db")
+
+	conn, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+
+	var count int
+	err = conn.QueryRow("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='pinned'").Scan(&count)
+	if err != nil {
+		t.Fatalf("pragma_table_info: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("sessions.pinned missing: got %d", count)
+	}
+}

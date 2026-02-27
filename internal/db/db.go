@@ -43,7 +43,23 @@ func migrate(conn *sql.DB) error {
 	if err := migrateImport(conn); err != nil {
 		return fmt.Errorf("migrate import: %w", err)
 	}
+	if err := migratePinned(conn); err != nil {
+		return fmt.Errorf("migrate pinned: %w", err)
+	}
 	return nil
+}
+
+func migratePinned(conn *sql.DB) error {
+	var count int
+	err := conn.QueryRow("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='pinned'").Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err = conn.Exec("ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+	return err
 }
 
 func migrateImport(conn *sql.DB) error {

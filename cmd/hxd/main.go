@@ -12,6 +12,7 @@ import (
 	"github.com/history-extended/hx/internal/config"
 	"github.com/history-extended/hx/internal/db"
 	"github.com/history-extended/hx/internal/ingest"
+	"github.com/history-extended/hx/internal/retention"
 	"github.com/history-extended/hx/internal/spool"
 	"github.com/history-extended/hx/internal/store"
 )
@@ -76,9 +77,13 @@ func main() {
 
 	st := store.New(dbc)
 	eventsPath := spool.EventsPath(spoolDir())
+	cfg, _ := config.Load()
+	blobDir := blobDirFromConfig()
+	lastPrune := time.Now()
 
-	// Poll loop: ingest, sleep
+	// Poll loop: ingest, sleep; run retention every 10 min
 	tick := 3 * time.Second
+	pruneInterval := 10 * time.Minute
 	for {
 		n, err := ingest.Run(st, eventsPath)
 		if err != nil {
@@ -87,6 +92,23 @@ func main() {
 		if n > 0 {
 			// Could update last_ingest_at file for hx status
 		}
+		if time.Since(lastPrune) >= pruneInterval && cfg != nil {
+			retention.PruneEvents(dbc, cfg)
+			retention.PruneBlobs(dbc, blobDir, cfg)
+			lastPrune = time.Now()
+		}
 		time.Sleep(tick)
 	}
+}
+
+func blobDirFromConfig() string {
+	c, err := config.Load()
+	if err == nil {
+		return c.BlobDir
+	}
+	if v := os.Getenv("HX_BLOB_DIR"); v != "" {
+		return v
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hx", "blobs")
 }

@@ -117,6 +117,14 @@ hx import --file history.txt --host my-laptop
 
 Re-importing the same file is idempotent (duplicates skipped). Imported events appear in `hx find` and `hx last`.
 
+## Retention and privacy (M6)
+
+- **Pin session:** `hx pin --last` or `hx pin --session <SID>` — exempt from retention pruning
+- **Forget window:** `hx forget --since 15m` (or 1h, 24h, 7d) — hard-delete events in that window
+- **Export:** `hx export --last --redacted` — markdown evidence packet; `--redacted` sanitizes timestamps and tokens
+
+The daemon (hxd) runs retention pruning every 10 minutes: events older than 12 months (configurable) and blobs older than 90 days. Pinned sessions are never pruned.
+
 ## Artifacts (hx attach, hx query)
 
 - **Attach a log:** `hx attach --file build.log` (links to last session by default)

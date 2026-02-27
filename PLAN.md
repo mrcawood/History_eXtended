@@ -354,8 +354,9 @@ M3.3 ──→ M3.5
 - **M3:** 5 tasks; hx find (FTS5) + hx last (last session + failure highlights).
 - **M4:** Artifact ingestion, skeleton fingerprints, hx attach, hx query --file (see below).
 - **M5:** 7 tasks; Ollama embeddings + LLM explanations; `hx query "<question>"` with semantic re-rank and optional summary.
+- **M6:** 8 tasks; retention pruning, pin, forget, export (see below).
 - **M7:** 9 tasks; history import (hx import --file); parsers, dedup, pipeline, CLI.
-- **Next milestone:** M6 (retention + pin/export).
+- **Next milestone:** M6 implementation.
 
 ---
 
@@ -379,6 +380,87 @@ M3.3 ──→ M3.5
 
 - Pre-stored embeddings; on-demand only
 - sqlite-vec or vector DB
+
+---
+
+## M6: Retention + Pin/Export Polish
+
+**Goal:** Bounded storage via retention pruning (events 12 mo, blobs 90 d); pinned sessions exempt; `hx forget --since N` for privacy; `hx export [--session SID|--last] --redacted` for evidence packets.
+
+### Schema
+
+**sessions:** add column
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| pinned | INTEGER | N | 0 | 0 = not pinned, 1 = pinned (exempt from retention) |
+
+### Retention rules (per PRD)
+
+- Events: delete older than `retention_events_months` (12). Skip sessions where `pinned = 1`.
+- Blobs: delete older than `retention_blobs_days` (90); respect `blob_disk_cap_gb`. Orphan blobs (no artifact ref) removable.
+- FTS: when deleting events, delete from `events_fts` (rowid = event_id).
+- Pinned sessions: never prune their events or linked blobs.
+
+### Forget semantics (PROGRESS: delete, not tombstone)
+
+- `hx forget --since 15m` (or `1h`, `24h`, `7d`): delete events in window. Hard removal; verifiable via empty search.
+- Cascade: events → events_fts; artifacts linked to removed sessions; blobs orphaned by artifact removal.
+
+### Export format
+
+- Markdown with session/event summary, command list, attached artifact paths.
+- `--redacted`: apply redaction patterns to output (timestamps → `<TS>`, tokens, etc.).
+
+### Task list (ordered)
+
+| ID | Task | Deps | TDD note |
+|----|------|------|----------|
+| M6.1 | Migration: ALTER sessions ADD pinned INTEGER NOT NULL DEFAULT 0 | — | Unit: apply, verify |
+| M6.2 | hx pin --session SID \| --last | M6.1 | Unit: pin, verify sessions.pinned |
+| M6.3 | internal/retention: PruneEvents(cfg) — delete old events (excl. pinned), sync events_fts | M6.1 | Unit: fixture DB, assert count |
+| M6.4 | internal/retention: PruneBlobs(cfg) — old blobs + disk cap; remove orphaned artifacts | M6.3 | Unit: fixture blobs, assert |
+| M6.5 | Wire retention into hxd: run PruneEvents+PruneBlobs periodically (e.g. every 10 min) | M6.3, M6.4 | Manual |
+| M6.6 | hx forget --since 15m \| 1h \| 24h \| 7d | M6.3 | Unit: delete window, verify empty |
+| M6.7 | hx export [--session SID\|--last] --redacted | — | Unit: output format, redaction |
+| M6.8 | Wire hx pin, forget, export into cmd/hx | M6.2, M6.6, M6.7 | Manual |
+
+### Dependency graph
+
+```
+M6.1 ──┬─→ M6.2 ──→ M6.8
+       └─→ M6.3 ──→ M6.4 ──→ M6.5
+       └─→ M6.6 ──→ M6.8
+M6.7 ─────────────→ M6.8
+```
+
+### Suggested sprint slices
+
+**Slice A (pin + retention core):**
+1. M6.1 (migration)
+2. M6.2 (hx pin)
+3. M6.3 (PruneEvents)
+4. M6.4 (PruneBlobs)
+5. M6.5 (hxd integration)
+
+**Slice B (forget + export):**
+1. M6.6 (hx forget)
+2. M6.7 (hx export)
+3. M6.8 (wire)
+
+### Risk ordering
+
+| Risk | Mitigation |
+|------|------------|
+| FTS out of sync after delete | Explicit DELETE FROM events_fts WHERE rowid IN (...) |
+| Blob file missing, artifact refs invalid | Prune checks file exists; artifact cleanup before blob delete |
+| Forget deletes pinned session | Forget respects pinned; skip events in pinned sessions |
+| Export leaks secrets | Redaction patterns; document limits |
+
+### Out of scope for M6
+
+- Redaction in live capture (M2+); export redaction only
+- Allowlist/ignore enforcement in daemon (separate)
 
 ---
 

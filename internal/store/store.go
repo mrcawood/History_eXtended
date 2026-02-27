@@ -79,6 +79,29 @@ func (s *Store) UpdateSessionEnded(sessionID string, endedAt float64) error {
 	return err
 }
 
+// PinSession sets pinned=1 for the session (M6). Exempts from retention.
+func (s *Store) PinSession(sessionID string) error {
+	res, err := s.db.Exec(`UPDATE sessions SET pinned = 1 WHERE session_id = ?`, sessionID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// LastSessionID returns the session ID of the most recent event.
+func (s *Store) LastSessionID() (string, error) {
+	var sid string
+	err := s.db.QueryRow(`SELECT session_id FROM events ORDER BY COALESCE(ended_at, started_at) DESC LIMIT 1`).Scan(&sid)
+	if err != nil {
+		return "", err
+	}
+	return sid, nil
+}
+
 // EnsureImportSession creates an import session. host may be empty.
 func (s *Store) EnsureImportSession(sessionID, batchID, sourceFile, host string, startedAt float64) error {
 	if host == "" {

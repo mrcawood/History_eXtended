@@ -42,6 +42,9 @@ See [INSTALL.md](INSTALL.md) for full setup.
 | `hx attach --file <path>` | Link artifact to last session |
 | `hx query "<question>" [--no-llm]` | Evidence-backed search; optional Ollama semantic + summary |
 | `hx query --file <path>` | Find sessions with similar artifact |
+| `hx pin [--session SID\|--last]` | Pin session (exempt from retention) |
+| `hx forget --since 15m\|1h\|24h\|7d` | Delete events in time window |
+| `hx export [--session SID\|--last] [--redacted]` | Export session as markdown |
 | `hx import --file <path>` | Import shell history file |
 
 ## Requirements
