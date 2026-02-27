@@ -353,8 +353,32 @@ M3.3 ──→ M3.5
 - **M2:** 9 tasks; daemon tails spool, pairs pre/post, batch inserts into SQLite with WAL + cmd dedup; hx status shows daemon health.
 - **M3:** 5 tasks; hx find (FTS5) + hx last (last session + failure highlights).
 - **M4:** Artifact ingestion, skeleton fingerprints, hx attach, hx query --file (see below).
+- **M5:** 7 tasks; Ollama embeddings + LLM explanations; `hx query "<question>"` with semantic re-rank and optional summary.
 - **M7:** 9 tasks; history import (hx import --file); parsers, dedup, pipeline, CLI.
-- **Next milestone:** M5 (Ollama), M6 (retention), or M7 (history import).
+- **Next milestone:** M6 (retention + pin/export).
+
+---
+
+## M5: Optional Ollama Embeddings + LLM Explanations
+
+**Goal:** `hx query "<question>"` — evidence-backed retrieval with optional semantic re-rank (Ollama embeddings) and LLM summarization. Graceful fallback when Ollama unavailable.
+
+### Task list (ordered)
+
+| ID | Task | Deps | TDD note |
+|----|------|------|----------|
+| M5.1 | Config: ollama_base_url, ollama_embed_model, ollama_chat_model, ollama_enabled | — | Unit: defaults |
+| M5.2 | internal/ollama: Embed, Generate, Available | — | Unit: mock HTTP |
+| M5.3 | internal/query: CosineSimilarity, RerankBySemantic | M5.2 | Unit: rank tests |
+| M5.4 | internal/query/pipeline: Retrieve (FTS → optional semantic) | M5.1, M5.3 | — |
+| M5.5 | cmdQuery question mode: parse flags, call Retrieve, format evidence | M5.4 | Manual |
+| M5.6 | LLM explanation: after evidence, call Generate with top 5 snippets | M5.2, M5.5 | Manual |
+| M5.7 | Docs: README, INSTALL, PROGRESS | — | — |
+
+### Out of scope for M5
+
+- Pre-stored embeddings; on-demand only
+- sqlite-vec or vector DB
 
 ---
 

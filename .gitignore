@@ -1,4 +1,5 @@
 /bin/
+/hx
 tmp/
 tmp_test/
 *.o

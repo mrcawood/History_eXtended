@@ -15,3 +15,9 @@ allowlist_mode: false
 # allowlist_bins: [git, make, cmake, pytest, srun, sbatch]
 
 # ignore_patterns: ['*password*', '*secret*']
+
+# Ollama (M5) - optional semantic search and LLM explanations
+# ollama_enabled: true
+# ollama_base_url: http://localhost:11434
+# ollama_embed_model: nomic-embed-text   # or all-minilm
+# ollama_chat_model: llama3.2            # or mistral, etc.

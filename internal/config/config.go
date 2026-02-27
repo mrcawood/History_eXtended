@@ -10,27 +10,36 @@ import (
 
 // Config holds resolved paths and settings. Paths use XDG defaults when not in file.
 type Config struct {
-	SpoolDir             string  `yaml:"spool_dir"`
-	BlobDir              string  `yaml:"blob_dir"`
-	DbPath               string  `yaml:"db_path"`
-	RetentionEventsMonths int     `yaml:"retention_events_months"`
-	RetentionBlobsDays   int     `yaml:"retention_blobs_days"`
-	BlobDiskCapGB        float64 `yaml:"blob_disk_cap_gb"`
-	AllowlistMode        bool    `yaml:"allowlist_mode"`
-	AllowlistBins        []string `yaml:"allowlist_bins"`
-	IgnorePatterns       []string `yaml:"ignore_patterns"`
+	SpoolDir              string   `yaml:"spool_dir"`
+	BlobDir               string   `yaml:"blob_dir"`
+	DbPath                string   `yaml:"db_path"`
+	RetentionEventsMonths int      `yaml:"retention_events_months"`
+	RetentionBlobsDays    int      `yaml:"retention_blobs_days"`
+	BlobDiskCapGB         float64  `yaml:"blob_disk_cap_gb"`
+	AllowlistMode         bool     `yaml:"allowlist_mode"`
+	AllowlistBins         []string `yaml:"allowlist_bins"`
+	IgnorePatterns        []string `yaml:"ignore_patterns"`
+	// Ollama (M5): semantic search and LLM explanations
+	OllamaEnabled   bool   `yaml:"ollama_enabled"`
+	OllamaBaseURL   string `yaml:"ollama_base_url"`
+	OllamaEmbedModel string `yaml:"ollama_embed_model"`
+	OllamaChatModel  string `yaml:"ollama_chat_model"`
 }
 
 type rawConfig struct {
-	SpoolDir             string   `yaml:"spool_dir"`
-	BlobDir              string   `yaml:"blob_dir"`
-	DbPath               string   `yaml:"db_path"`
+	SpoolDir              string   `yaml:"spool_dir"`
+	BlobDir               string   `yaml:"blob_dir"`
+	DbPath                string   `yaml:"db_path"`
 	RetentionEventsMonths int      `yaml:"retention_events_months"`
-	RetentionBlobsDays   int      `yaml:"retention_blobs_days"`
-	BlobDiskCapGB        float64  `yaml:"blob_disk_cap_gb"`
-	AllowlistMode        bool     `yaml:"allowlist_mode"`
-	AllowlistBins        []string `yaml:"allowlist_bins"`
-	IgnorePatterns       []string `yaml:"ignore_patterns"`
+	RetentionBlobsDays    int      `yaml:"retention_blobs_days"`
+	BlobDiskCapGB         float64  `yaml:"blob_disk_cap_gb"`
+	AllowlistMode         bool     `yaml:"allowlist_mode"`
+	AllowlistBins         []string `yaml:"allowlist_bins"`
+	IgnorePatterns        []string `yaml:"ignore_patterns"`
+	OllamaEnabled        *bool    `yaml:"ollama_enabled"`
+	OllamaBaseURL        string   `yaml:"ollama_base_url"`
+	OllamaEmbedModel     string   `yaml:"ollama_embed_model"`
+	OllamaChatModel      string   `yaml:"ollama_chat_model"`
 }
 
 // Load reads config from XDG_CONFIG_HOME/hx/config.yaml. Missing file uses defaults.
@@ -41,12 +50,16 @@ func Load() (*Config, error) {
 	path := filepath.Join(configHome, "hx", "config.yaml")
 
 	c := &Config{
-		SpoolDir:             filepath.Join(dataHome, "hx", "spool"),
-		BlobDir:              filepath.Join(dataHome, "hx", "blobs"),
-		DbPath:               filepath.Join(dataHome, "hx", "hx.db"),
+		SpoolDir:              filepath.Join(dataHome, "hx", "spool"),
+		BlobDir:               filepath.Join(dataHome, "hx", "blobs"),
+		DbPath:                filepath.Join(dataHome, "hx", "hx.db"),
 		RetentionEventsMonths: 12,
-		RetentionBlobsDays:   90,
-		BlobDiskCapGB:        2.0,
+		RetentionBlobsDays:    90,
+		BlobDiskCapGB:         2.0,
+		OllamaEnabled:         true,
+		OllamaBaseURL:         "http://localhost:11434",
+		OllamaEmbedModel:      "nomic-embed-text",
+		OllamaChatModel:       "llama3.2",
 	}
 
 	b, err := os.ReadFile(path)
@@ -79,6 +92,18 @@ func Load() (*Config, error) {
 		}
 		if len(raw.IgnorePatterns) > 0 {
 			c.IgnorePatterns = raw.IgnorePatterns
+		}
+		if raw.OllamaEnabled != nil {
+			c.OllamaEnabled = *raw.OllamaEnabled
+		}
+		if raw.OllamaBaseURL != "" {
+			c.OllamaBaseURL = raw.OllamaBaseURL
+		}
+		if raw.OllamaEmbedModel != "" {
+			c.OllamaEmbedModel = raw.OllamaEmbedModel
+		}
+		if raw.OllamaChatModel != "" {
+			c.OllamaChatModel = raw.OllamaChatModel
 		}
 	}
 

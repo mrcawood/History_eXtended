@@ -95,6 +95,12 @@ Optional config at `~/.config/hx/config.yaml` (or `$XDG_CONFIG_HOME/hx/config.ya
 retention_events_months: 12
 retention_blobs_days: 90
 blob_disk_cap_gb: 2.0
+
+# Ollama (M5) - optional semantic search
+# ollama_enabled: true
+# ollama_base_url: http://localhost:11434
+# ollama_embed_model: nomic-embed-text
+# ollama_chat_model: llama3.2
 ```
 
 Copy `config/config.yaml.example` and edit. Env vars `HX_SPOOL_DIR`, `HX_BLOB_DIR`, `HX_DB_PATH` override config.
@@ -115,3 +121,24 @@ Re-importing the same file is idempotent (duplicates skipped). Imported events a
 
 - **Attach a log:** `hx attach --file build.log` (links to last session by default)
 - **Query by file:** `hx query --file error.log` — finds artifacts with same skeleton hash, returns related sessions
+
+## Semantic search (hx query, optional Ollama)
+
+Ask natural-language questions over your command history:
+
+```bash
+hx query "how did I fix the make build"
+hx query "pytest test run" --no-llm
+```
+
+- **With Ollama:** Uses embeddings for semantic re-ranking and an LLM to summarize evidence. Requires [Ollama](https://ollama.com/) running with `nomic-embed-text` and `llama3.2` (or configured models).
+- **Without Ollama / --no-llm:** Uses FTS only; always returns ranked evidence.
+
+Config in `~/.config/hx/config.yaml`:
+
+```yaml
+ollama_enabled: true
+ollama_base_url: http://localhost:11434
+ollama_embed_model: nomic-embed-text
+ollama_chat_model: llama3.2
+```

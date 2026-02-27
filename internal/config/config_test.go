@@ -22,6 +22,12 @@ func TestLoadDefaults(t *testing.T) {
 	if c.RetentionEventsMonths != 12 {
 		t.Errorf("RetentionEventsMonths = %d, want 12", c.RetentionEventsMonths)
 	}
+	if !c.OllamaEnabled {
+		t.Error("OllamaEnabled should be true by default")
+	}
+	if c.OllamaBaseURL != "http://localhost:11434" {
+		t.Errorf("OllamaBaseURL = %q, want http://localhost:11434", c.OllamaBaseURL)
+	}
 }
 
 func TestLoadFromFile(t *testing.T) {

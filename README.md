@@ -8,6 +8,7 @@ A local-first "flight recorder" for the terminal. Captures command events (text,
 - **Search:** `hx find <text>` — full-text search over command history
 - **Sessions:** `hx last` — last session with failure highlights
 - **Artifacts:** `hx attach` / `hx query --file` — link build logs, tracebacks; find related sessions
+- **Semantic search:** `hx query "<question>"` — natural-language search with optional Ollama embeddings and LLM summary
 - **History import:** `hx import --file ~/.zsh_history` — ingest existing shell history (zsh, bash, plain)
 
 ## Quick start
@@ -39,6 +40,7 @@ See [INSTALL.md](INSTALL.md) for full setup.
 | `hx find <text>` | Full-text search over commands |
 | `hx dump` | Last 20 events (debug) |
 | `hx attach --file <path>` | Link artifact to last session |
+| `hx query "<question>" [--no-llm]` | Evidence-backed search; optional Ollama semantic + summary |
 | `hx query --file <path>` | Find sessions with similar artifact |
 | `hx import --file <path>` | Import shell history file |
 
@@ -47,6 +49,7 @@ See [INSTALL.md](INSTALL.md) for full setup.
 - Go 1.21+
 - zsh (for live capture)
 - SQLite 3 with FTS5
+- Optional: [Ollama](https://ollama.com/) for semantic search and LLM summaries (`hx query "question"`)
 
 ## License
 

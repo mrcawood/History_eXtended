@@ -4,7 +4,7 @@
 
 # Current State
 
-- **Codebase:** M1–M4 + M7 complete. Config loading (internal/config); hx, hx-emit, hxd, blob use config.yaml.
+- **Codebase:** M1–M4 + M5 + M7 complete. Config loading (internal/config); hx, hx-emit, hxd, blob use config.yaml.
 - **Design:** PRD complete; PLAN.md; M4 in internal/blob, internal/artifact. M7 design in docs/ARCHITECTURE_history_import.md.
 
 # Approval Status
@@ -44,7 +44,7 @@ Awaiting user approval for next milestone.
 - [x] M2.8: hx status daemon health.
 - [x] M3.1–M3.5: hx find (FTS5) + hx last.
 - [x] M4.1–M4.6: Artifact ingestion, hx attach, hx query --file.
-- [ ] M5: Optional Ollama embeddings + LLM explanations.
+- [x] M5: Optional Ollama embeddings + LLM explanations.
 - [ ] M6: Retention + pin/export polish.
 - [x] M7 planning: task breakdown in PLAN.md (M7.1–M7.9).
 - [x] M7.1: Migration 002 (events/sessions columns; import_batches, import_dedup).
@@ -57,7 +57,7 @@ Awaiting user approval for next milestone.
 
 # Technical Context
 
-- **Repo structure:** `cmd/hx/`, `cmd/hx-emit/`, `cmd/hxd/`; `internal/config/`, `internal/db/`, `internal/store/`, `internal/spool/`, `internal/ingest/`, `internal/history/`, `internal/imp/`; `migrations/`; `src/hooks/hx.zsh`.
+- **Repo structure:** `cmd/hx/`, `cmd/hx-emit/`, `cmd/hxd/`; `internal/config/`, `internal/db/`, `internal/store/`, `internal/spool/`, `internal/ingest/`, `internal/history/`, `internal/imp/`, `internal/ollama/`, `internal/query/`; `migrations/`; `src/hooks/hx.zsh`.
 - **Components:** C1–C7 per PRD (hooks, emitter, spool, daemon, SQLite, blob store, query engine).
 - **Commands:** `hx status`, `hx pause`/`resume`, `hx last`, `hx find`, `hx query`, `hx attach`, `hx import` (M7), `hx export`.
 - **Configs:** Retention (12 mo events, 90 d blobs), spool path (e.g. `/tmp/hx/...`), blob store (`$XDG_DATA_HOME/hx/blobs`), ignore/allowlist rules.
@@ -74,6 +74,7 @@ Awaiting user approval for next milestone.
 
 # Recent Changes (Today)
 
+- Developer: M5 complete. Ollama embeddings + LLM explanations. `hx query "<question>"` with semantic re-rank and optional summary. internal/ollama client, internal/query pipeline. Config: ollama_enabled, ollama_base_url, ollama_embed_model, ollama_chat_model. Graceful fallback when Ollama unavailable.
 - Stabilization: feature/m7-history-import branch, 5 commits (M7, M1.7, docs, tests). README, INSTALL expanded. Test coverage: blob 39%, spool 83%, store 50%, artifact 57%.
 - Architect: History import feature added to PRD (§9.5). Design doc: docs/ARCHITECTURE_history_import.md. Record quality tiers (HIGH/MEDIUM/LOW), provenance schema, `hx import` CLI. M7 milestone added.
 - Planner: M7 task breakdown added to PLAN.md. Nine tasks (M7.1–M7.9): migration, parsers, dedup, store extensions, pipeline, CLI. Three sprint slices (A: schema+parsers, B: pipeline, C: CLI). TDD tests specified.
@@ -83,13 +84,13 @@ Awaiting user approval for next milestone.
 
 # Proposed Next Step (Requires Approval)
 
-**Recommendation:** Consider M5 (Ollama embeddings) or M6 (retention + pin/export). Both need planning.
+**Recommendation:** Proceed to M6 (retention + pin/export polish).
 
-**Justification:** M1 and M7 complete. M5/M6 are next in PLAN summary.
+**Justification:** M5 complete. M6 is next in PLAN summary.
 
 **Confidence:** High.
 
-**Alternatives:** Add M5/M6 task breakdown; proceed to M5 or M6 implementation.
+**Alternatives:** Add M6 task breakdown; polish M5 (e.g. embedding model fallback).
 
 ---
 

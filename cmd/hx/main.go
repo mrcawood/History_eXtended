@@ -4,6 +4,8 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +17,8 @@ import (
 	"github.com/history-extended/hx/internal/config"
 	"github.com/history-extended/hx/internal/db"
 	"github.com/history-extended/hx/internal/imp"
+	"github.com/history-extended/hx/internal/ollama"
+	"github.com/history-extended/hx/internal/query"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -345,22 +349,42 @@ func cmdAttach(args []string) {
 
 func cmdQuery(args []string) {
 	var filePath string
+	var noLLM bool
+	var questionParts []string
 	for i := 0; i < len(args); i++ {
-		if (args[i] == "--file" || args[i] == "-f") && i+1 < len(args) {
-			filePath = args[i+1]
-			break
+		switch args[i] {
+		case "--file", "-f":
+			if i+1 < len(args) {
+				filePath = args[i+1]
+				i++
+			}
+		case "--no-llm":
+			noLLM = true
+		default:
+			questionParts = append(questionParts, args[i])
 		}
 	}
-	if filePath == "" {
-		fmt.Fprintf(os.Stderr, "hx query: usage: hx query --file <path>\n")
-		os.Exit(1)
-	}
+	question := strings.Join(questionParts, " ")
+
 	conn, err := db.Open(dbPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hx query: %v\n", err)
 		os.Exit(1)
 	}
 	defer conn.Close()
+
+	if filePath != "" {
+		cmdQueryByFile(conn, filePath)
+		return
+	}
+	if strings.TrimSpace(question) == "" {
+		fmt.Fprintf(os.Stderr, "hx query: usage: hx query \"<question>\" [--no-llm]   OR   hx query --file <path>\n")
+		os.Exit(1)
+	}
+	cmdQueryByQuestion(conn, question, noLLM)
+}
+
+func cmdQueryByFile(conn *sql.DB, filePath string) {
 	st := artifact.New(conn)
 	sessions, err := st.QueryByFile(filePath, 10)
 	if err != nil {
@@ -383,6 +407,68 @@ func cmdQuery(args []string) {
 			fmt.Printf("    [%d] exit=%d  %s\n", e.Seq, e.ExitCode, cmdShort)
 		}
 		fmt.Println()
+	}
+}
+
+func cmdQueryByQuestion(conn *sql.DB, question string, noLLM bool) {
+	cfg := getConfig()
+	if cfg == nil {
+		cfg = &config.Config{OllamaEnabled: true, OllamaBaseURL: "http://localhost:11434", OllamaEmbedModel: "nomic-embed-text", OllamaChatModel: "llama3.2"}
+	}
+	candidates, err := query.Retrieve(context.Background(), conn, question, cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx query: %v\n", err)
+		os.Exit(1)
+	}
+	if len(candidates) == 0 {
+		fmt.Println("No matching events found.")
+		return
+	}
+	fmt.Printf("Evidence (%d):\n\n", len(candidates))
+	fmt.Printf("%-8s %-24s %4s %4s %-40s %s\n", "event_id", "session_id", "seq", "exit", "cwd", "cmd")
+	fmt.Println(strings.Repeat("-", 100))
+	for _, c := range candidates {
+		exit := fmt.Sprintf("%d", c.ExitCode)
+		cmdShort := c.Cmd
+		if len(cmdShort) > 38 {
+			cmdShort = cmdShort[:35] + "..."
+		}
+		cwdShort := c.Cwd
+		if len(cwdShort) > 38 {
+			cwdShort = cwdShort[:35] + "..."
+		}
+		fmt.Printf("%-8d %-24s %4d %4s %-40s %s\n", c.EventID, c.SessionID, c.Seq, exit, cwdShort, cmdShort)
+	}
+
+	if !noLLM && cfg.OllamaEnabled && ollama.Available(context.Background(), cfg.OllamaBaseURL) {
+		topN := 5
+		if len(candidates) < topN {
+			topN = len(candidates)
+		}
+		var b strings.Builder
+		b.WriteString("Question: ")
+		b.WriteString(question)
+		b.WriteString("\n\nEvidence snippets (session_id, event_id, cmd):\n")
+		for i := 0; i < topN; i++ {
+			c := candidates[i]
+			b.WriteString("- ")
+			b.WriteString(c.SessionID)
+			b.WriteString(" event ")
+			b.WriteString(fmt.Sprintf("%d", c.EventID))
+			b.WriteString(": ")
+			b.WriteString(c.Cmd)
+			b.WriteString("\n")
+		}
+		b.WriteString("\nSummarize in 2-3 sentences what the user did, citing session/event IDs. Be concise.")
+
+		summary, err := ollama.Generate(context.Background(), cfg.OllamaBaseURL, cfg.OllamaChatModel, b.String())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\nOllama unavailable, skipping summary: %v\n", err)
+		} else if s := strings.TrimSpace(summary); s != "" {
+			fmt.Println()
+			fmt.Println("Summary:")
+			fmt.Println(s)
+		}
 	}
 }
 
