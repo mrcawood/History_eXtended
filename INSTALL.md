@@ -5,11 +5,14 @@
 - Go 1.21+
 - zsh
 
-## Build
+## Build and test
 
 ```bash
 make build
 # Builds with sqlite_fts5 tag for hx find. If FTS5 fails, remove -tags sqlite_fts5 from hx and hxd in Makefile.
+
+make test      # Run all tests (requires FTS5)
+make test-sync # Run sync package tests only
 ```
 
 ## Install (optional)
@@ -142,6 +145,29 @@ The daemon (hxd) runs retention pruning every 10 minutes:
 
 - **Attach a log:** `hx attach --file build.log` (links to last session by default)
 - **Query by file:** `hx query --file error.log` — finds artifacts with same skeleton hash, returns related sessions
+
+## Multi-device sync (Phase 2, hx sync)
+
+Sync history across devices using a shared folder (NAS, Syncthing, removable drive):
+
+```bash
+# One-time setup: pick a sync directory
+hx sync init --store folder:/path/to/HXSync
+# Optional: hx sync init --store folder:/mnt/nas/hx --vault-name my-vault
+
+# Push local events to the store
+hx sync push
+
+# On another device (same store path): pull imported history
+hx sync pull
+
+# Check state
+hx sync status
+```
+
+- **Store:** A directory (e.g. NAS mount, Syncthing folder). Objects are written atomically.
+- **v0:** Plaintext only (`--no-encrypt`); E2EE configurable later.
+- Requires `hx sync init` before push/pull.
 
 ## Semantic search (hx query, optional Ollama)
 

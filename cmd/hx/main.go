@@ -15,14 +15,16 @@ import (
 	"time"
 
 	"github.com/history-extended/hx/internal/artifact"
+	"github.com/history-extended/hx/internal/blob"
 	"github.com/history-extended/hx/internal/config"
-	"github.com/history-extended/hx/internal/store"
 	"github.com/history-extended/hx/internal/db"
+	"github.com/history-extended/hx/internal/export"
 	"github.com/history-extended/hx/internal/imp"
 	"github.com/history-extended/hx/internal/ollama"
-	"github.com/history-extended/hx/internal/export"
 	"github.com/history-extended/hx/internal/query"
 	"github.com/history-extended/hx/internal/retention"
+	"github.com/history-extended/hx/internal/store"
+	"github.com/history-extended/hx/internal/sync"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -710,10 +712,162 @@ func cmdDump() {
 	}
 }
 
+func cmdSync(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "hx sync: usage: hx sync <init|status|push|pull> [options]\n")
+		os.Exit(1)
+	}
+	switch args[0] {
+	case "init":
+		cmdSyncInit(args[1:])
+	case "status":
+		cmdSyncStatus()
+	case "push":
+		cmdSyncPush()
+	case "pull":
+		cmdSyncPull()
+	default:
+		fmt.Fprintf(os.Stderr, "hx sync: unknown subcommand %q\n", args[0])
+		os.Exit(1)
+	}
+}
+
+func cmdSyncInit(args []string) {
+	var storeArg string
+	vaultName := "default"
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--store":
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "hx sync init: --store requires path\n")
+				os.Exit(1)
+			}
+			storeArg = args[i+1]
+			i++
+		case "--vault-name":
+			if i+1 >= len(args) {
+				fmt.Fprintf(os.Stderr, "hx sync init: --vault-name requires value\n")
+				os.Exit(1)
+			}
+			vaultName = args[i+1]
+			i++
+		case "--no-encrypt":
+			// TODO: store encrypt=false
+		}
+	}
+	if storeArg == "" || !strings.HasPrefix(storeArg, "folder:") {
+		fmt.Fprintf(os.Stderr, "hx sync init: usage: hx sync init --store folder:/path/to/HXSync [--vault-name NAME]\n")
+		os.Exit(1)
+	}
+	storePath := strings.TrimPrefix(storeArg, "folder:")
+	storePath = strings.TrimSuffix(storePath, "/")
+
+	conn, err := db.Open(dbPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx sync init: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	vaultID := "vault-" + vaultName
+	nodeID := sync.NewNodeID()
+	_, err = conn.Exec(`
+		INSERT OR REPLACE INTO sync_vaults (vault_id, name, store_type, store_path, encrypt) VALUES (?, ?, 'folder', ?, 0)
+	`, vaultID, vaultName, storePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx sync init: %v\n", err)
+		os.Exit(1)
+	}
+	_, err = conn.Exec(`INSERT OR REPLACE INTO sync_nodes (node_id, vault_id, label) VALUES (?, ?, ?)`, nodeID, vaultID, "this-device")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx sync init: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Sync initialized. Vault: %s, Node: %s, Store: %s\n", vaultID, nodeID, storePath)
+}
+
+func cmdSyncStatus() {
+	conn, err := db.Open(dbPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx sync status: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	var vaultID, storePath, nodeID string
+	err = conn.QueryRow(`SELECT v.vault_id, v.store_path, n.node_id FROM sync_vaults v JOIN sync_nodes n ON n.vault_id = v.vault_id LIMIT 1`).Scan(&vaultID, &storePath, &nodeID)
+	if err != nil {
+		fmt.Println("No sync vault configured. Run: hx sync init --store folder:/path/to/HXSync")
+		return
+	}
+	fmt.Printf("Vault: %s\n", vaultID)
+	fmt.Printf("Store: %s\n", storePath)
+	fmt.Printf("Node:  %s\n", nodeID)
+
+	var pending, imported int
+	conn.QueryRow(`SELECT COUNT(*) FROM events WHERE origin='live' AND event_id NOT IN (SELECT event_id FROM sync_published_events WHERE vault_id=?)`, vaultID).Scan(&pending)
+	conn.QueryRow(`SELECT COUNT(*) FROM imported_segments WHERE vault_id=?`, vaultID).Scan(&imported)
+	fmt.Printf("Pending (unpublished): %d events\n", pending)
+	fmt.Printf("Imported segments: %d\n", imported)
+}
+
+func cmdSyncPush() {
+	conn, err := db.Open(dbPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx sync push: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	var vaultID, storePath, nodeID string
+	err = conn.QueryRow(`SELECT v.vault_id, v.store_path, n.node_id FROM sync_vaults v JOIN sync_nodes n ON n.vault_id = v.vault_id LIMIT 1`).Scan(&vaultID, &storePath, &nodeID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx sync push: no sync vault. Run hx sync init first.\n")
+		os.Exit(1)
+	}
+	fs := sync.NewFolderStore(storePath)
+	res, err := sync.Push(conn, fs, vaultID, nodeID, nil, false)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx sync push: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Pushed %d segments (%d events)\n", res.SegmentsPublished, res.EventsPublished)
+}
+
+func cmdSyncPull() {
+	conn, err := db.Open(dbPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx sync pull: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	cfg := getConfig()
+	blobDir := blob.BlobDir()
+	if cfg != nil {
+		blobDir = cfg.BlobDir
+	}
+
+	var vaultID, storePath string
+	err = conn.QueryRow(`SELECT vault_id, store_path FROM sync_vaults LIMIT 1`).Scan(&vaultID, &storePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx sync pull: no sync vault. Run hx sync init first.\n")
+		os.Exit(1)
+	}
+	fs := sync.NewFolderStore(storePath)
+	res, err := sync.Import(conn, fs, blobDir, vaultID, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx sync pull: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Imported: %d segments, %d blobs. Skipped: %d segments. Tombstones: %d. Errors: %d\n",
+		res.SegmentsImported, res.BlobsImported, res.SegmentsSkipped, res.TombstonesApplied, res.Errors)
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("hx: History eXtended - terminal flight recorder")
-		fmt.Println("Usage: hx <status|pause|resume|last|dump|find|attach|query|import|pin|forget|export>")
+		fmt.Println("Usage: hx <status|pause|resume|last|dump|find|attach|query|import|pin|forget|export|sync> [args...]")
 		os.Exit(0)
 	}
 	switch os.Args[1] {
@@ -745,6 +899,8 @@ func main() {
 		cmdForget(os.Args[2:])
 	case "export":
 		cmdExport(os.Args[2:])
+	case "sync":
+		cmdSync(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "hx: unknown command %q\n", os.Args[1])
 		os.Exit(1)

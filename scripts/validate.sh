@@ -178,27 +178,49 @@ else
   log "A5 FAIL: spool grew during pause ($BEFORE -> $AFTER)"
 fi
 
-# ---- A6: hx forget ----
-log "A6: hx forget"
-# Create a distinguishable event, forget it, verify not found
-# Events are keyed by (session_id, seq). We have val-session-1.
-# Forget last 7d - that will include our seeded data
-COUNT_BEFORE=$("$HX" dump 2>/dev/null | wc -l)
+# ---- A6a: hx forget removes recent events (PASS) ----
+log "A6a: hx forget (recent events)"
+# Inject events with current timestamp so they fall in 7d window
+NOW=$(date +%s)
+A6_SID="a6-forget-test-$$"
+echo "{\"t\":\"pre\",\"ts\":$NOW,\"sid\":\"$A6_SID\",\"seq\":1,\"cmd\":\"echo a6_forget_test\",\"cwd\":\"/tmp\",\"tty\":\"pts/0\",\"host\":\"val-host\"}" >> "$HX_SPOOL_DIR/events.jsonl"
+echo "{\"t\":\"post\",\"ts\":$((NOW+1)),\"sid\":\"$A6_SID\",\"seq\":1,\"exit\":0,\"dur_ms\":10,\"pipe\":[]}" >> "$HX_SPOOL_DIR/events.jsonl"
+sleep 3  # let daemon ingest
 "$HX" forget --since 7d 2>/dev/null || true
-OUT=$("$HX" find "make" 2>&1) || true
-# After forget, we may have 0 events (all in window). Accept either:
+OUT=$("$HX" find "a6_forget_test" 2>&1) || true
 if echo "$OUT" | grep -q "(no matches)\|No matching"; then
-  log "A6 PASS: forget removed data (not retrievable)"
-elif [[ "$COUNT_BEFORE" -eq 0 ]]; then
-  log "A6 SKIP: no events to forget"
+  log "A6a PASS: forget removed recent events (non-retrievable)"
+  A6A_RESULT=PASS
 else
-  log "A6 CHECK: forget ran; verify manually"
+  log "A6a CHECK: find returned: $OUT"
+  A6A_RESULT=CHECK
 fi
+
+# ---- A6b: golden dataset outside forget window (N/A) ----
+log "A6b: golden timestamps outside 7d (N/A)"
+# Seeded events use t0=1708000000 (2024); forget 7d does not touch them. Deletion count 0 expected.
+log "A6b N/A: golden events use 2024 timestamps; forget 7d correctly affects only recent window"
 
 # ---- A7: retention / pin ----
 log "A7: retention + pin (structural check)"
 # Pin a session, run prune - pinned should remain. Unit test covers this.
 log "A7: retention unit tests cover this (see internal/retention/retention_test.go)"
+
+# ---- Data integrity: spool vs ingested (no silent drops) ----
+log "Data integrity: spool pairs vs events"
+SPOOL_LINES=$(wc -l < "$HX_SPOOL_DIR/events.jsonl")
+SPOOL_PAIRS=$((SPOOL_LINES / 2))
+if command -v sqlite3 >/dev/null 2>&1; then
+  EVENT_COUNT=$(sqlite3 "$HX_DB_PATH" "SELECT COUNT(*) FROM events" 2>/dev/null | tr -d '\n')
+else
+  EVENT_COUNT=$("$HX" find "proj" 2>/dev/null | tail -n +3 | grep -E '^[0-9]+' | wc -l | tr -d ' ')
+fi
+EVENT_COUNT=${EVENT_COUNT:-0}
+if [[ "$EVENT_COUNT" -ge 20 ]]; then
+  log "Data integrity: $EVENT_COUNT events in DB (expected ≥20); spool had $SPOOL_PAIRS pairs"
+else
+  log "Data integrity CHECK: events=$EVENT_COUNT (expected ≥20)"
+fi
 
 # ---- Performance baseline ----
 log "Performance baseline"
@@ -209,6 +231,12 @@ for cmd in "hx last" "hx find make" "hx status"; do
   ELAPSED=$((END - START))
   log "  $cmd: ${ELAPSED}ms"
 done
+# hx query --file (no LLM)
+START=$(date +%s%3N)
+"$HX" query --file "$GOLDEN/build/01_make_error.log" 2>/dev/null || true
+END=$(date +%s%3N)
+QUERY_FILE_MS=$((END - START))
+log "  hx query --file: ${QUERY_FILE_MS}ms"
 
 # ---- Summary ----
 log "Validation complete. Val dir: $VAL_DIR (set KEEP_VAL_DIR=1 to preserve)"
@@ -221,6 +249,9 @@ mkdir -p "$(dirname "$RESULTS_FILE")"
   echo ""
   echo "A3 hit rate: ${HIT:-0}/${TOTAL:-0}"
   echo "A5: pause test completed"
-  echo "A6: forget test completed"
+  echo "A6a: forget recent events: ${A6A_RESULT:-CHECK}"
+  echo "A6b: golden outside window: N/A"
+  echo "hx query --file: ${QUERY_FILE_MS:-—}ms"
+  echo "Data integrity: $EVENT_COUNT events ingested"
 } > "$RESULTS_FILE"
 log "Results written to $RESULTS_FILE"

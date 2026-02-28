@@ -46,6 +46,55 @@ func migrate(conn *sql.DB) error {
 	if err := migratePinned(conn); err != nil {
 		return fmt.Errorf("migrate pinned: %w", err)
 	}
+	if err := migrateSync(conn); err != nil {
+		return fmt.Errorf("migrate sync: %w", err)
+	}
+	return nil
+}
+
+func migrateSync(conn *sql.DB) error {
+	_, err := conn.Exec(`
+		CREATE TABLE IF NOT EXISTS sync_vaults (
+			vault_id TEXT PRIMARY KEY,
+			name TEXT,
+			store_type TEXT NOT NULL,
+			store_path TEXT,
+			encrypt INTEGER NOT NULL DEFAULT 1
+		);
+		CREATE TABLE IF NOT EXISTS sync_nodes (
+			node_id TEXT NOT NULL,
+			vault_id TEXT NOT NULL,
+			label TEXT,
+			PRIMARY KEY (node_id, vault_id),
+			FOREIGN KEY (vault_id) REFERENCES sync_vaults(vault_id)
+		);
+		CREATE TABLE IF NOT EXISTS imported_segments (
+			vault_id TEXT NOT NULL,
+			node_id TEXT NOT NULL,
+			segment_id TEXT NOT NULL,
+			segment_hash TEXT,
+			imported_at REAL NOT NULL,
+			PRIMARY KEY (vault_id, node_id, segment_id)
+		);
+		CREATE TABLE IF NOT EXISTS applied_tombstones (
+			tombstone_id TEXT NOT NULL,
+			vault_id TEXT NOT NULL,
+			applied_at REAL NOT NULL,
+			node_id TEXT,
+			start_ts REAL NOT NULL,
+			end_ts REAL NOT NULL,
+			PRIMARY KEY (tombstone_id, vault_id)
+		);
+		CREATE TABLE IF NOT EXISTS sync_published_events (
+			event_id INTEGER NOT NULL,
+			vault_id TEXT NOT NULL,
+			segment_id TEXT NOT NULL,
+			PRIMARY KEY (event_id, vault_id)
+		);
+	`)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -1,6 +1,6 @@
 # hx build
 
-.PHONY: build install clean
+.PHONY: build install test test-sync clean
 
 build:
 	go build -tags sqlite_fts5 -o bin/hx ./cmd/hx
@@ -13,6 +13,12 @@ install: build
 	@echo "Installed hx, hx-emit, hxd to $(HOME)/.local/bin"
 	@echo "Add $(HOME)/.local/bin to PATH if needed."
 	@echo "Source src/hooks/hx.zsh from .zshrc to enable capture."
+
+test:
+	go test -tags sqlite_fts5 ./...
+
+test-sync:
+	go test -tags sqlite_fts5 ./internal/sync/... -v -timeout 30s
 
 clean:
 	rm -rf bin/
