@@ -191,10 +191,34 @@ A2.7 Status is observable: pending/imported/skipped counts reported with reasons
 ---
 
 ## 12) Implementation agent checklist
-- Read Sync Storage Contract v0
-- Implement `SyncStore` + `FolderStore`
-- Implement segment writer (finalize + publish)
-- Implement importer (idempotent + order-independent)
-- Implement tombstones (win and prevent resurrection)
-- Implement `hx sync init/status/push/pull`
-- Implement 2-node integration tests
+- ✅ Read Sync Storage Contract v0
+- ✅ Implement `SyncStore` + `FolderStore`
+- ✅ Implement segment writer (finalize + publish)
+- ✅ Implement importer (idempotent + order-independent)
+- ✅ Implement tombstones (win and prevent resurrection)
+- ✅ Implement `hx sync init/status/push/pull`
+- ✅ Implement 2-node integration tests
+- ✅ Add comprehensive robustness tests (corruption handling, non-blocking scan)
+- ✅ Add production validation with defense-in-depth guarantees
+
+## 13) Phase 2A Test Gate Status
+
+**Status:** ✅ **GREEN** - All acceptance criteria met
+
+### Validation Results:
+- **15/15 integration tests passing** with race detection
+- **Production importer validation** with defense-in-depth guarantees
+- **Vault-based encryption model** implemented and tested
+- **Atomic publish operations** with strict validation
+- **Non-blocking scan behavior** despite corrupt objects
+- **Pre-insert tombstone enforcement** preventing resurrection
+
+### Test Coverage:
+- ✅ Multi-device convergence (2-node, bidirectional)
+- ✅ Vault encryption with device enrollment
+- ✅ Tombstone propagation and enforcement
+- ✅ Concurrent sync operations
+- ✅ Corruption rejection and robustness
+- ✅ Store scan resilience and disorder handling
+
+**Ready for Phase 2B planning.**

@@ -10,7 +10,7 @@ A local-first "flight recorder" for the terminal. Captures command events (text,
 - **Artifacts:** `hx attach` / `hx query --file` — link build logs, tracebacks; find related sessions
 - **Semantic search:** `hx query "<question>"` — natural-language search with optional Ollama embeddings and LLM summary
 - **History import:** `hx import --file ~/.zsh_history` — ingest existing shell history (zsh, bash, plain)
-- **Multi-device sync (Phase 2):** `hx sync init --store folder:/path` + `hx sync push` / `hx sync pull` — replicate history across devices via shared folder (NAS, Syncthing, removable media)
+- **Multi-device sync (Phase 2):** `hx sync init --store folder:/path` + `hx sync push` / `hx sync pull` — replicate history across devices via shared folder (NAS, Syncthing, removable media) with vault-based encryption and atomic publish guarantees
 
 ## Quick start
 

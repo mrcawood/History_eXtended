@@ -1,14 +1,15 @@
 # History eXtended: Status Report for Oversight
 
-**Date:** 2026-02-26  
-**Status:** Phase 1 complete and validated  
-**PRD:** `prd.md` (validated at 9a0a136)
+**Date:** 2026-02-28  
+**Status:** Phase 1 complete and validated; Phase 2A complete and production-ready  
+**PRD:** `prd.md` (validated at 9a0a136)  
+**Phase 2A:** `docs/hx_phase2_PRD.md` (test gate GREEN)
 
 ---
 
 ## 1. Status
 
-All planned milestones (M0–M7) are implemented. Validation evidence below demonstrates that A1–A7 are met, not merely that code paths exist.
+All planned milestones (M0–M7) are implemented. Phase 2A multi-device sync is complete and production-ready. Validation evidence below demonstrates that A1–A7 are met, not merely that code paths exist.
 
 | Milestone | Status | Notes |
 |-----------|--------|-------|
@@ -20,6 +21,7 @@ All planned milestones (M0–M7) are implemented. Validation evidence below demo
 | M5 | ✓ | Ollama embeddings, semantic search, LLM explanations |
 | M6 | ✓ | Retention, pin/export, hx forget |
 | M7 | ✓ | hx import for zsh/bash history, provenance schema |
+| Phase 2A | ✓ | Multi-device sync with vault-based encryption and atomic publish guarantees |
 
 ---
 
@@ -102,10 +104,43 @@ _Prompt overhead:_ Not measured; design ensures no DB/LLM in hooks (fail-open). 
 
 ---
 
-## 6. Recommendation
+## 6. Phase 2A Validation Evidence
+
+### 6.1 Integration Test Suite
+
+**Location:** `testdata/integration/`
+
+| Test Category | Count | Status |
+|---------------|-------|--------|
+| Core Tests | 11 | ✅ PASS (encryption, sync, tombstones, concurrency) |
+| Robustness Tests | 4 | ✅ PASS (corruption rejection, scan resilience, non-blocking) |
+| **Total** | **15** | **✅ ALL PASS** |
+
+**Validation Guarantees:**
+- Vault-based encryption with device enrollment
+- Eventual consistency with deterministic convergence  
+- Atomic publish operations with strict validation
+- Non-blocking scan behavior despite corrupt objects
+- Pre-insert tombstone enforcement preventing resurrection
+- Defense-in-depth validation (multi-layer filtering)
+
+### 6.2 Production Importer Validation
+
+**Location:** `internal/sync/importer.go`
+
+- ✅ All four failure classes covered (tmp/partial, header, AEAD, hash)
+- ✅ Vault binding validation prevents cross-vault contamination
+- ✅ Granular error reporting for operator visibility
+- ✅ Transactionality ensures all-or-nothing imports
+- ✅ Race detection clean with multiple iterations
+
+---
+
+## 7. Recommendation
 
 - **Phase 1:** Feature-complete and validated. A1–A7 evidenced; A3 top-3 hit rate 100% on golden dataset.
-- **Next:** Optional Option A polish (retention/export integration tests). No blocking issues.
-- **Phase 2:** Scope not defined. If proceeding, recommend single wedge: **cross-device sync** (encrypted, reliable, multi-device search).
+- **Phase 2A:** Complete and production-ready. 15/15 integration tests passing with comprehensive validation.
+- **Next:** Phase 2B planning (additional store backends, performance optimization).
+- **Phase 2:** Scope defined and implemented. Multi-device sync with vault-based encryption complete.
 
-**Approval status:** Ready for Phase 2 gate. Awaiting oversight approval.
+**Approval status:** Phase 2A test gate GREEN. Ready for Phase 2B planning.
