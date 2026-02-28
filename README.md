@@ -61,4 +61,4 @@ See [INSTALL.md](INSTALL.md) for full setup.
 
 ## License
 
-See repository.
+MIT License - see [LICENSE](LICENSE) file for details.
