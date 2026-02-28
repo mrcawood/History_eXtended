@@ -10,6 +10,7 @@ A local-first "flight recorder" for the terminal. Captures command events (text,
 - **Artifacts:** `hx attach` / `hx query --file` — link build logs, tracebacks; find related sessions
 - **Semantic search:** `hx query "<question>"` — natural-language search with optional Ollama embeddings and LLM summary
 - **History import:** `hx import --file ~/.zsh_history` — ingest existing shell history (zsh, bash, plain)
+- **Multi-device sync (Phase 2):** `hx sync init --store folder:/path` + `hx sync push` / `hx sync pull` — replicate history across devices via shared folder (NAS, Syncthing, removable media)
 
 ## Quick start
 
@@ -46,6 +47,10 @@ See [INSTALL.md](INSTALL.md) for full setup.
 | `hx forget --since 15m\|1h\|24h\|7d` | Delete events in time window |
 | `hx export [--session SID\|--last] [--redacted]` | Export session as markdown |
 | `hx import --file <path>` | Import shell history file |
+| `hx sync init --store folder:/path` | Initialize sync vault (Phase 2) |
+| `hx sync status` | Sync state: vault, pending, imported |
+| `hx sync push` | Publish local events to store |
+| `hx sync pull` | Import from store into local DB |
 
 ## Requirements
 

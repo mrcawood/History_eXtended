@@ -1,8 +1,11 @@
 Phase 1 Validation Results
 =========================
 Date: 2026-02-26
-Val dir: /tmp/tmp.C6o0rKxct5
+Val dir: /tmp/tmp.p6uGUB8cxn
 
 A3 hit rate: 25/25
 A5: pause test completed
-A6: forget test completed
+A6a: forget recent events: PASS
+A6b: golden outside window: N/A
+hx query --file: 12ms
+Data integrity: 20 events ingested

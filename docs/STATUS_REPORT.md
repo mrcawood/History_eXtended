@@ -1,7 +1,8 @@
 # History eXtended: Status Report for Oversight
 
 **Date:** 2026-02-26  
-**Status:** Phase 1 complete and validated
+**Status:** Phase 1 complete and validated  
+**PRD:** `prd.md` (validated at 9a0a136)
 
 ---
 
@@ -36,41 +37,46 @@ All planned milestones (M0–M7) are implemented. Validation evidence below demo
 | traceback | 5     | KeyError, ModuleNotFound, Attribute, pytest, TypeError |
 | compiler  | 5     | gcc, clang, rust, java, Python syntax         |
 
-Variants for A4: `traceback/04_pytest_fail_variant.txt`, `ci/01_github_actions_variant.log` — same logical content, different timestamps/addresses.
+**Dataset nature:** Synthetic examples (realistic failure patterns). Variants for A4: `traceback/04_pytest_fail_variant.txt`, `ci/01_github_actions_variant.log` — same logical content, different timestamps/addresses.
 
-### 2.2 A1–A7 results (2026-02-26 run)
+### 2.2 A3 hit definition
 
-| Criterion | Result | Evidence |
-|-----------|--------|----------|
-| **A1** | PASS | `hx last` identifies last non-zero exit event and shows surrounding commands (make exit=1, go build exit=1, etc.) |
-| **A2** | PASS | `hx find "make"` returns stable session_id `val-session-1` with context snippets |
-| **A3** | PASS | `hx query --file X` hit rate: **build 5/5, ci 5/5, slurm 5/5, traceback 5/5, compiler 5/5** → **25/25 (100%)** |
-| **A4** | PASS | Skeletonizing yields same `skeleton_hash` across repeated occurrences; variant files match same artifact; `TestGoldenVariantsSameSkeleton` in CI |
-| **A5** | PASS | `hx pause` prevents capture; spool line count unchanged during pause window |
-| **A6** | CHECK | `hx forget` ran; golden events use 2024 timestamps (outside 7d window), so 0 forgotten. Logic verified: forget deletes events in time window; manual test with recent events confirms data non-retrievable |
-| **A7** | PASS | Retention unit tests pass; pinned sessions exempt; `blob_disk_cap_gb` enforced in `PruneBlobs` |
+**“Hit”** = correct related session appears in **top-3** ranked matches returned by `hx query --file X`. Ranking is by `skeleton_hash` exact match; all matches with same hash are returned (no confidence threshold). A hit means the session we attached the artifact to is among the results.
 
-### 2.3 Performance baseline (2026-02-26)
+### 2.3 A1–A7 results (2026-02-26 run)
+
+| Criterion | Result | Evidence pointer |
+|-----------|--------|------------------|
+| **A1** | PASS | `scripts/validate.sh` (A1 block); `docs/VALIDATION_APPENDIX.md#A1` |
+| **A2** | PASS | `scripts/validate.sh` (A2 block); `docs/VALIDATION_APPENDIX.md#A2` |
+| **A3** | PASS (golden dataset) | 25/25 top-3. Dataset is synthetic; does not yet include cross-session skeleton collisions. Planned: A3-AmbiguousPairs TODO — add N ambiguous pairs (same skeleton_hash across sessions/repos/hosts) and validate top-3 ranking. `scripts/validate.sh` (A3 block); `docs/VALIDATION_APPENDIX.md#A3` |
+| **A4** | PASS | `internal/artifact/skeleton_test.go` (TestGoldenVariantsSameSkeleton, TestSkeletonHash); `scripts/validate.sh` (A4 block) |
+| **A5** | PASS | `scripts/validate.sh` (A5 block); spool line count unchanged during pause |
+| **A6a** | PASS | `scripts/validate.sh` (A6a block): inject recent events → forget 7d → find returns no matches. `internal/retention/retention_test.go` (ForgetSince) |
+| **A6b** | N/A | Golden dataset timestamps (2024) outside forget window; deletion count 0 expected |
+| **A7** | PASS | `internal/retention/retention_test.go`; `blob_disk_cap_gb` enforced in `PruneBlobs` |
+
+### 2.4 Performance baseline (2026-02-26)
 
 | Operation       | Target              | Measured |
 |-----------------|---------------------|----------|
 | hx last         | instantaneous       | 13ms     |
 | hx find         | sub-second          | 12ms     |
 | hx status       | negligible          | 11ms     |
-| hx query --file | sub-second (no LLM) | —        |
+| hx query --file | sub-second (FTS-only, no LLM) | 13–16ms |
 
-_Prompt overhead:_ Not measured; design ensures no DB/LLM in hooks (fail-open).
+_Prompt overhead:_ Not measured; design ensures no DB/LLM in hooks (fail-open). Proxy: spool append is file I/O only; `hx-emit` call latency is sub-ms in practice.
 
-### 2.4 Safety / controls
+### 2.5 Safety / controls
 
-- **hx pause + hx forget:** Pause creates `.paused`; hx-emit no-ops when present. Forget hard-deletes events in window; verified via empty search.
+- **hx pause + hx forget:** Pause creates `.paused`; hx-emit no-ops when present. Forget hard-deletes events in window; A6a test verifies non-retrievability.
 - **Redaction / ignore / allowlist:** `internal/filter`; `hx status` shows allowlist/ignore state; `export --redacted` sanitizes output.
 
 ---
 
 ## 3. PRD Alignment (M7)
 
-M7 is in PRD §15 (Phase 1 milestones). The PRD is the single canonical source; no "Phase 1+" label. M7 (history import) is a Phase 1 milestone.
+**Canonical PRD:** `prd.md` at repo root. M7 is in §15 (Phase 1 milestones). No “Phase 1+” label; PRD is the single source of truth.
 
 ---
 
@@ -80,14 +86,14 @@ M7 is in PRD §15 (Phase 1 milestones). The PRD is the single canonical source; 
 |---------------------|--------|
 | **Schema migrations** | In place: `migrations/`, `internal/db/migrate*.go` |
 | **Crash recovery**    | Spool replay on daemon restart; idempotent `INSERT OR IGNORE`; corrupted lines skipped |
-| **Data integrity**   | No silent drops; file append; daemon retries; no UDP best-effort mode |
+| **Data integrity**   | No silent drops. Invariant (validation run): each command = 1 pre + 1 post line (no session_start); spool cmd-line pairs == ingested + skipped_filter + skipped_invalid. Validation asserts event count ≥ seeded pairs; no allowlist/ignore in run. Pause windows, allowlist drops, corrupted lines excluded. `scripts/validate.sh` |
 | **Security**         | Local-only; no outbound; no telemetry; config at `~/.config/hx/` |
 
 ---
 
 ## 5. Option C + A progress
 
-**Option C (validation):** ✓ Complete. Golden dataset + `scripts/validate.sh`; results in `docs/VALIDATION_APPENDIX.md`. CI runs validation on every push.
+**Option C (validation):** ✓ Complete. Golden dataset + `scripts/validate.sh`; results in `docs/VALIDATION_APPENDIX.md`, `docs/VALIDATION_RESULTS.txt`. CI runs validation on every push.
 
 **Option A (polish):**
 - ✓ `blob_disk_cap` enforced in daemon (`PruneBlobs`)
@@ -98,7 +104,7 @@ M7 is in PRD §15 (Phase 1 milestones). The PRD is the single canonical source; 
 
 ## 6. Recommendation
 
-- **Phase 1:** Feature-complete and validated. A1–A7 evidenced with 100% A3 hit rate on golden dataset.
+- **Phase 1:** Feature-complete and validated. A1–A7 evidenced; A3 top-3 hit rate 100% on golden dataset.
 - **Next:** Optional Option A polish (retention/export integration tests). No blocking issues.
 - **Phase 2:** Scope not defined. If proceeding, recommend single wedge: **cross-device sync** (encrypted, reliable, multi-device search).
 

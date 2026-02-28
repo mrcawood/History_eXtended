@@ -1,15 +1,19 @@
 # Project Summary
 
-**History eXtended (hx)** is a local-first "flight recorder" for the terminal. It captures command events (text, timestamps, exit codes, cwd, session) with negligible overhead, stores them in SQLite, and provides evidence-backed retrieval. It correlates external artifacts (build logs, CI logs, tracebacks) to historical sessions, and supports semantic search via local Ollama when available. Phase 1 is CLI-first, single-user, no cloud sync.
+**History eXtended (hx)** is a local-first "flight recorder" for the terminal. It captures command events (text, timestamps, exit codes, cwd, session) with negligible overhead, stores them in SQLite, and provides evidence-backed retrieval. Phase 1 complete; Phase 2 adds multi-device sync (E2EE, folder store, deterministic merge).
+
+# Current Phase
+
+Implementation (Phase 2A)
 
 # Current State
 
-- **Codebase:** M1–M4 + M5 + M6 + M7 complete. Config loading (internal/config); hx, hx-emit, hxd, blob use config.yaml.
-- **Design:** PRD complete; PLAN.md; M4 in internal/blob, internal/artifact. M7 design in docs/ARCHITECTURE_history_import.md.
+- **Codebase:** Phase 1 (M0–M7) complete. Phase 2A: codec, FolderStore, importer, segment writer, CLI done; integration tests pending.
+- **Design:** Canonical Phase 2 docs: docs/hx_phase2_PRD.md + docs/hx_sync_storage_contract_v0.md. Supporting: docs/hx_phase2_agent_context.md, docs/THREAT_MODEL_PHASE2.md (design lint checklist).
 
 # Approval Status
 
-Awaiting user approval for next milestone.
+Proceeding with Phase 2A using conservative defaults; any changes to open choices will be surfaced as config knobs.
 
 # Key Decisions
 
@@ -21,6 +25,8 @@ Awaiting user approval for next milestone.
 - Architecture: Shell hooks → Emitter → Spool → Daemon → SQLite (+ blob store) → Query pipeline.
 - Stack: zsh hooks first; SQLite WAL + FTS5; optional Ollama for semantic match.
 - Privacy: Pause/resume, forget window, redaction, optional allowlist mode.
+- Phase 2: Sync immutable objects (segments/blobs/tombstones), not SQLite. E2EE default. Merge = union + tombstones.
+- Phase 2 tombstone: time-window tombstones primary (matches hx forget --since); event-key tombstones optional later.
 
 # Decision Records
 
@@ -50,16 +56,22 @@ Awaiting user approval for next milestone.
 - [x] M7.1: Migration 002 (events/sessions columns; import_batches, import_dedup).
 - [x] M7.2–M7.4: internal/history parsers (ParseZshExtended, ParseBashTimestamped, ParsePlain, DetectFormat).
 - [x] M7.5–M7.9: dedup, store extensions, pipeline, hx import CLI.
+- [x] Phase 2A.1: Object codec + crypto + put_atomic
+- [x] Phase 2A.2: FolderStore list/get/put_atomic + directory layout
+- [x] Phase 2A.3: Importer + sync metadata tables
+- [x] Phase 2A.4: Segment writer + flush triggers
+- [x] Phase 2A.5: CLI hx sync init/status/push/pull
+- [ ] Phase 2A.6: Integration tests (2-node converge + tombstone)
 
 # Open Questions
 
-- None blocking. History import: merge strategy, default host label (see ARCHITECTURE_history_import.md).
+- Phase 2 PRD §11: segment flush thresholds, pin merge semantics, key storage. Non-blocking; conservative defaults. Tombstone: time-window first (decided).
 
 # Technical Context
 
 - **Repo structure:** `cmd/hx/`, `cmd/hx-emit/`, `cmd/hxd/`; `internal/config/`, `internal/db/`, `internal/store/`, `internal/spool/`, `internal/ingest/`, `internal/history/`, `internal/imp/`, `internal/ollama/`, `internal/query/`, `internal/retention/`, `internal/export/`; `migrations/`; `src/hooks/hx.zsh`.
 - **Components:** C1–C7 per PRD (hooks, emitter, spool, daemon, SQLite, blob store, query engine).
-- **Commands:** `hx status`, `hx pause`/`resume`, `hx last`, `hx find`, `hx query`, `hx attach`, `hx import` (M7), `hx pin`, `hx forget`, `hx export`.
+- **Commands:** `hx status`, `hx pause`/`resume`, `hx last`, `hx find`, `hx query`, `hx attach`, `hx import` (M7), `hx pin`, `hx forget`, `hx export`, `hx sync init/status/push/pull` (Phase 2A).
 - **Configs:** Retention (12 mo events, 90 d blobs), spool path (e.g. `/tmp/hx/...`), blob store (`$XDG_DATA_HOME/hx/blobs`), ignore/allowlist rules.
 - **Dependencies:** Go 1.21+ (build), zsh, SQLite 3, FTS5 (M2+); optional: Ollama (M5).
 - **Assumptions:** macOS/Linux; SSH and tmux compatible.
@@ -74,6 +86,12 @@ Awaiting user approval for next milestone.
 
 # Recent Changes (Today)
 
+- Developer: Phase 2A.4+2A.5. internal/sync: Push() (segment writer), sync_published_events, NewNodeID(). CLI: hx sync init/status/push/pull.
+- Developer: Phase 2A.3. internal/sync: importer (Import), sync metadata migration (sync_vaults, sync_nodes, imported_segments, applied_tombstones). store.InsertSyncEvent, EnsureSyncSession. Segment/blob/tombstone import, idempotency, tombstone application. Tests: segment import, idempotent re-import (skip FTS5 when unavailable).
+- Developer: Phase 2A.1+2A.2. internal/sync: object codec (EncodeSegment/Blob/Tombstone, DecodeObject, DecryptObject), AEAD envelope (XChaCha20-Poly1305, header-as-AAD), FolderStore (List, Get, PutAtomic with tmp→rename). Tests: plaintext/encrypted roundtrip, tamper detection, PutGet, List, atomic publish.
+- Supervisor feedback: PROGRESS updated—proceeding with defaults, design lint checklist, tombstone time-window primary, doc precedence, concrete action list.
+- Threat Modeler: docs/THREAT_MODEL_PHASE2.md. Design lint checklist + STRIDE. No blocking issues.
+- Dispatcher: Phase 2 transition. PROGRESS updated for Phase 2A tasks. User approved proceed.
 - Polish: blob_disk_cap_gb enforced in PruneBlobs; import truncation warning at 100k lines; allowlist/ignore_patterns applied at ingest; hx status shows allowlist/ignore state. internal/filter; ingest accepts config.
 - Developer: M6 complete. Retention pruning (events 12mo, blobs 90d), hx pin, hxd retention loop every 10min, hx forget --since, hx export --redacted. internal/retention, internal/export. sessions.pinned migration.
 - Planner: M6 task breakdown added to PLAN.md. Eight tasks (M6.1–M6.8): migration (sessions.pinned), hx pin, PruneEvents, PruneBlobs, hxd retention loop, hx forget, hx export, wire. Two sprint slices (A: pin+retention, B: forget+export).
@@ -85,16 +103,13 @@ Awaiting user approval for next milestone.
 - Developer: M7 Slice B+C complete. internal/imp, hx import CLI. Manual test passed.
 - Developer: M1.7 complete. internal/config, hx/hx-emit/hxd/blob use config.
 
-# Proposed Next Step (Requires Approval)
+# Proposed Next Step
 
-**Recommendation:** Phase 1 complete. Polish items done: blob_disk_cap enforcement, import truncation warning, allowlist/ignore in daemon and status.
+**Concrete action list (execution order):**
+1. [x] Implement object codec + AEAD envelope
+2. [x] Implement folder layout + atomic publish (FolderStore)
+3. [x] Implement importer + sync metadata tables
+4. [x] Segment writer + CLI (init/status/push/pull)
+5. [ ] Integration tests: 2-node converge + tombstone propagation
 
-**Justification:** M6 implemented. All PLAN Phase 1 milestones (M0–M7) complete. Retention enforces blob_disk_cap_gb; import warns when truncated; allowlist and ignore_patterns applied at ingest; hx status shows allowlist/ignore state.
-
-**Confidence:** High.
-
-**Alternatives:** Add export tests; new milestones.
-
----
-
-Status: Awaiting user approval.
+**Current:** Step 5 — integration tests.
