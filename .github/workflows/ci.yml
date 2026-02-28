@@ -19,11 +19,41 @@ jobs:
       - name: Build
         run: go build -tags sqlite_fts5 -o /dev/null ./cmd/hx ./cmd/hxd ./cmd/hx-emit
 
-      - name: Test
+      - name: Unit Tests
         run: go test -tags sqlite_fts5 -v ./...
+
+      - name: Phase 2A Integration Tests
+        run: |
+          go test ./testdata/integration/... -race -v
+
+      - name: Test Coverage
+        run: |
+          go test -tags sqlite_fts5 -coverprofile=coverage.out ./...
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.out
+          flags: unittests
 
       - name: Validate (A1-A7 golden dataset)
         run: |
           make build
           chmod +x scripts/validate.sh
           ./scripts/validate.sh
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          args: --timeout=5m

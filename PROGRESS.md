@@ -63,6 +63,9 @@ Proceeding with Phase 2A using conservative defaults; any changes to open choice
 - [x] Phase 2A.4: Segment writer + flush triggers
 - [x] Phase 2A.5: CLI hx sync init/status/push/pull
 - [x] Phase 2A.6: Integration tests (2-node converge + tombstone) **COMPLETE**
+- [x] Phase 2B Gate A: S3Store implementation with list/get/put_atomic + config parsing
+- [x] Phase 2B Gate A: Pagination test passes (15 objects, continuation tokens)
+- [x] Phase 2B Gate A: Multipart upload test passes (6MB object)
 
 # Open Questions
 

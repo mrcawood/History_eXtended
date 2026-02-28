@@ -1,5 +1,10 @@
 # hx — History eXtended
 
+[![CI](https://github.com/mrcawood/History_eXtended/workflows/CI/badge.svg)](https://github.com/mrcawood/History_eXtended/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mrcawood/History_eXtended)](https://goreportcard.com/report/github.com/mrcawood/History_eXtended)
+
 A local-first "flight recorder" for the terminal. Captures command events (text, timestamps, exit codes, cwd, session) with negligible overhead, stores them in SQLite, and provides evidence-backed retrieval.
 
 ## Features
