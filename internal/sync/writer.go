@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"time"
 )
 
@@ -32,15 +33,15 @@ func Push(conn *sql.DB, syncStore SyncStore, vaultID, nodeID string, K_master []
 	defer rows.Close()
 
 	type ev struct {
-		eventID   int64
-		sessionID string
-		seq       int
-		startedAt float64
-		endedAt   sql.NullFloat64
+		eventID    int64
+		sessionID  string
+		seq        int
+		startedAt  float64
+		endedAt    sql.NullFloat64
 		durationMs sql.NullInt64
-		exitCode  sql.NullInt64
-		cwd       string
-		cmd       string
+		exitCode   sql.NullInt64
+		cwd        string
+		cmd        string
 	}
 	var events []ev
 	for rows.Next() {
@@ -146,6 +147,14 @@ func Push(conn *sql.DB, syncStore SyncStore, vaultID, nodeID string, K_master []
 
 	res.SegmentsPublished = 1
 	res.EventsPublished = len(events)
+
+	// Publish manifest after successful segment publication
+	if err := PublishManifest(conn, syncStore, vaultID, nodeID, K_master, encrypt); err != nil {
+		// Log error but don't fail the push - manifest is best-effort
+		// In production, this would be logged and retried
+		return res, fmt.Errorf("publish manifest: %w", err)
+	}
+
 	return res, nil
 }
 

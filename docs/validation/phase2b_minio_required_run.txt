@@ -1,0 +1,33 @@
+Starting MinIO for integration tests...
+docker run -d --name hx-minio-test -p 9000:9000 -p 9001:9001 \
+	-e "MINIO_ROOT_USER=minioadmin" \
+	-e "MINIO_ROOT_PASSWORD=minioadmin" \
+	minio/minio server /data --console-address ":9001"
+7bda4c797c451098319d39c84c2a326acee94b54bd5085acac989ca3751216a3
+Waiting for MinIO to start...
+Creating test bucket...
+Added `myminio` successfully.
+Bucket created successfully `myminio/hx-test`.
+Running S3 integration tests...
+HX_REQUIRE_S3_ENDPOINT=1 go test ./internal/sync/... -v -run "TestTwoNodeConverge_MinIO|TestTombstonePropagation_MinIO|TestCorruptManifest_MinIO|TestEfficiency_ManifestReducesListCalls|TestRetryableStore_MinIOIntegration"
+=== RUN   TestTwoNodeConverge_MinIO
+--- PASS: TestTwoNodeConverge_MinIO (0.01s)
+=== RUN   TestTombstonePropagation_MinIO
+--- PASS: TestTombstonePropagation_MinIO (0.00s)
+=== RUN   TestCorruptManifest_MinIO
+--- PASS: TestCorruptManifest_MinIO (0.00s)
+=== RUN   TestEfficiency_ManifestReducesListCalls
+--- PASS: TestEfficiency_ManifestReducesListCalls (0.01s)
+=== RUN   TestRetryableStore_MinIOIntegration
+=== RUN   TestRetryableStore_MinIOIntegration/SuccessfulOperations
+=== RUN   TestRetryableStore_MinIOIntegration/InterfaceCompliance
+--- PASS: TestRetryableStore_MinIOIntegration (0.00s)
+    --- PASS: TestRetryableStore_MinIOIntegration/SuccessfulOperations (0.00s)
+    --- PASS: TestRetryableStore_MinIOIntegration/InterfaceCompliance (0.00s)
+PASS
+ok  	github.com/history-extended/hx/internal/sync	(cached)
+Cleaning up MinIO...
+docker stop hx-minio-test
+hx-minio-test
+docker rm hx-minio-test
+hx-minio-test
