@@ -41,11 +41,11 @@ func TestPush_PublishesSegment(t *testing.T) {
 
 	_, err = conn.Exec(`
 		CREATE TABLE IF NOT EXISTS sync_published_events (
+			event_id TEXT NOT NULL,
 			vault_id TEXT NOT NULL,
-			node_id TEXT NOT NULL,
 			segment_id TEXT NOT NULL,
 			published_at INTEGER NOT NULL,
-			PRIMARY KEY (vault_id, node_id, segment_id)
+			PRIMARY KEY (event_id, vault_id, segment_id)
 		)
 	`)
 	if err != nil {
