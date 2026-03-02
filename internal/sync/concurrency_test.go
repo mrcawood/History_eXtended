@@ -67,7 +67,11 @@ func TestConcurrentPullIdempotency(t *testing.T) {
 	// Setup in-memory database for testing
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
+		}
+	}()
 
 	// Create necessary tables
 	_, err = db.Exec(`
@@ -142,7 +146,11 @@ func TestConcurrentManifestSequenceAtomicity(t *testing.T) {
 	// Setup in-memory database
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
+		}
+	}()
 
 	// Create tables with unique constraint
 	_, err = db.Exec(`
@@ -176,7 +184,11 @@ func TestConcurrentManifestSequenceAtomicity(t *testing.T) {
 				errors[index] = err
 				return
 			}
-			defer tx.Rollback()
+			defer func() {
+				if err := tx.Rollback(); err != nil {
+					t.Logf("Warning: failed to rollback transaction: %v", err)
+				}
+			}()
 
 			// Get current sequence
 			var lastSeq uint64
@@ -247,7 +259,11 @@ func TestRaceConditionDetection(t *testing.T) {
 
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("Warning: failed to close database: %v", err)
+		}
+	}()
 
 	// Create tables
 	_, err = db.Exec(`

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // FolderStore implements SyncStore using a local directory.
@@ -21,7 +22,10 @@ func NewFolderStore(root string) *FolderStore {
 
 func tmpName() string {
 	b := make([]byte, 8)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to timestamp if random fails
+		return fmt.Sprintf("tmp-%d", time.Now().UnixNano())
+	}
 	return hex.EncodeToString(b) + ".partial"
 }
 
@@ -89,21 +93,21 @@ func (f *FolderStore) PutAtomic(key string, data []byte) error {
 	}
 	_, err = fh.Write(data)
 	if err != nil {
-		fh.Close()
-		os.Remove(tmpPath)
+		_ = fh.Close()
+		os.Remove(tmpPath) // ignore cleanup error
 		return err
 	}
 	if err := fh.Sync(); err != nil {
-		fh.Close()
-		os.Remove(tmpPath)
+		_ = fh.Close()
+		os.Remove(tmpPath) // ignore cleanup error
 		return err
 	}
 	if err := fh.Close(); err != nil {
-		os.Remove(tmpPath)
+		os.Remove(tmpPath) // ignore cleanup error
 		return err
 	}
 	if err := os.Rename(tmpPath, finalPath); err != nil {
-		os.Remove(tmpPath)
+		os.Remove(tmpPath) // ignore cleanup error
 		return fmt.Errorf("atomic rename: %w", err)
 	}
 	return nil

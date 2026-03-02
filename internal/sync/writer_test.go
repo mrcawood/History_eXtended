@@ -23,13 +23,17 @@ func TestPush_PublishesSegment(t *testing.T) {
 
 	// Seed a live event
 	st := store.New(conn)
-	st.EnsureSession("s1", "host1", "pts/0", "/home", 100)
+	if err := st.EnsureSession("s1", "host1", "pts/0", "/home", 100); err != nil {
+		t.Fatal(err)
+	}
 	cmdID, _ := st.CmdID("push test", 100)
-	st.InsertEvent(
+	if _, err := st.InsertEvent(
 		&store.PreEvent{T: "pre", Ts: 100, Sid: "s1", Seq: 1, Cmd: "push test", Cwd: "/home", Host: "host1"},
 		&store.PostEvent{T: "post", Ts: 101, Sid: "s1", Seq: 1, Exit: 0, DurMs: 100},
 		cmdID,
-	)
+	); err != nil {
+		t.Fatal(err)
+	}
 
 	fs := NewFolderStore(storeDir)
 	vaultID := "v1"
