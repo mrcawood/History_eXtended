@@ -14,7 +14,11 @@ func TestMigrateImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Verify M7 columns exist on events
 	var count int
@@ -47,16 +51,22 @@ func TestMigrateImportIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open 1: %v", err)
 	}
-	conn1.Close()
+	if closeErr := conn1.Close(); closeErr != nil {
+		t.Logf("Warning: failed to close database 1: %v", closeErr)
+	}
 
 	conn2, err := Open(path)
 	if err != nil {
 		t.Fatalf("Open 2: %v", err)
 	}
-	conn2.Close()
+	if closeErr := conn2.Close(); closeErr != nil {
+		t.Logf("Warning: failed to close database 2: %v", closeErr)
+	}
 
 	// Clean up temp file for Windows compatibility
-	os.Remove(path)
+	if err := os.Remove(path); err != nil {
+		t.Logf("Warning: failed to remove temp file: %v", err)
+	}
 }
 
 func TestMigratePinned(t *testing.T) {
@@ -67,7 +77,11 @@ func TestMigratePinned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
 
 	var count int
 	err = conn.QueryRow("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='pinned'").Scan(&count)

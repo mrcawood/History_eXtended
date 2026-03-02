@@ -48,7 +48,9 @@ func TestReadSkipsInvalid(t *testing.T) {
 invalid json
 {"t":"post","ts":2,"sid":"s1","seq":1,"exit":0,"dur_ms":0,"pipe":[]}
 `
-	os.WriteFile(path, []byte(content), 0644)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 	events, err := Read(path)
 	if err != nil {
 		t.Fatalf("Read: %v", err)

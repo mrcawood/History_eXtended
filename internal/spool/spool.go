@@ -10,17 +10,17 @@ import (
 
 // Event is a pre or post event (discriminated by T field).
 type Event struct {
-	T      string  `json:"t"`
-	Ts     float64 `json:"ts"`
-	Sid    string  `json:"sid"`
-	Seq    int     `json:"seq"`
-	Cmd    string  `json:"cmd"`
-	Cwd    string  `json:"cwd"`
-	Tty    string  `json:"tty"`
-	Host   string  `json:"host"`
-	Exit   int     `json:"exit"`
-	DurMs  int64   `json:"dur_ms"`
-	Pipe   []int   `json:"pipe"`
+	T     string  `json:"t"`
+	Ts    float64 `json:"ts"`
+	Sid   string  `json:"sid"`
+	Seq   int     `json:"seq"`
+	Cmd   string  `json:"cmd"`
+	Cwd   string  `json:"cwd"`
+	Tty   string  `json:"tty"`
+	Host  string  `json:"host"`
+	Exit  int     `json:"exit"`
+	DurMs int64   `json:"dur_ms"`
+	Pipe  []int   `json:"pipe"`
 }
 
 // Read opens events.jsonl and yields parsed events. Skips invalid lines.
@@ -32,7 +32,12 @@ func Read(eventsPath string) ([]Event, error) {
 		}
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			// Log error but don't override original error
+			fmt.Fprintf(os.Stderr, "Warning: failed to close events file: %v\n", closeErr)
+		}
+	}()
 	var out []Event
 	sc := bufio.NewScanner(f)
 	lineNum := 0

@@ -20,11 +20,15 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 	if err := conn.Ping(); err != nil {
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			return nil, fmt.Errorf("ping failed: %v, close failed: %w", err, closeErr)
+		}
 		return nil, err
 	}
 	if err := migrate(conn); err != nil {
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			return nil, fmt.Errorf("migrate failed: %v, close failed: %w", err, closeErr)
+		}
 		return nil, err
 	}
 	return conn, nil
