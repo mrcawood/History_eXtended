@@ -136,7 +136,7 @@ func Push(conn *sql.DB, syncStore SyncStore, vaultID, nodeID string, K_master []
 	}
 	defer tx.Rollback()
 	for _, e := range events {
-		_, err = tx.Exec(`INSERT OR IGNORE INTO sync_published_events (event_id, vault_id, segment_id) VALUES (?, ?, ?)`, e.eventID, vaultID, segmentID)
+		_, err = tx.Exec(`INSERT OR IGNORE INTO sync_published_events (event_id, vault_id, node_id, segment_id) VALUES (?, ?, ?, ?)`, e.eventID, vaultID, nodeID, segmentID)
 		if err != nil {
 			return nil, err
 		}
