@@ -119,22 +119,3 @@ func TestS3Store_MinIOIntegration(t *testing.T) {
 		})
 	})
 }
-
-// setupMinIOForTests starts a MinIO container for testing.
-// This is a helper for CI environments.
-func setupMinIOForTests() (*S3Store, error) {
-	// This would typically use docker-compose or testcontainers
-	// For now, assume MinIO is already running on localhost:9000
-	ctx := context.Background()
-	cfg := S3Config{
-		Bucket:    "hx-test",
-		Prefix:    fmt.Sprintf("test-%d", time.Now().Unix()),
-		Region:    "us-east-1",
-		Endpoint:  "http://localhost:9000",
-		PathStyle: true,
-		AccessKey: "minioadmin",
-		SecretKey: "minioadmin",
-	}
-
-	return NewS3Store(ctx, cfg)
-}

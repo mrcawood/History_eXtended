@@ -135,11 +135,11 @@ func cmdStatus() {
 
 func cmdPause() {
 	dir := filepath.Dir(pausedFile())
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		fmt.Fprintf(os.Stderr, "hx: cannot create %s: %v\n", dir, err)
 		os.Exit(1)
 	}
-	if err := os.WriteFile(pausedFile(), []byte{}, 0644); err != nil {
+	if err := os.WriteFile(pausedFile(), []byte{}, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "hx: cannot create pause flag: %v\n", err)
 		os.Exit(1)
 	}

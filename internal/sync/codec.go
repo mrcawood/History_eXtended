@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 )
 
 // Object wire format: 4-byte big-endian header length | header JSON | body (encrypted or plain)
@@ -79,8 +80,13 @@ func encodeObject(h *Header, plaintext []byte, K_master []byte, encrypt bool) ([
 }
 
 func marshalObject(header, body []byte) []byte {
+	headerLen := len(header)
+	if int64(headerLen) > math.MaxUint32 {
+		// Truncate header if too long (shouldn't happen in practice)
+		headerLen = int(math.MaxUint32)
+	}
 	buf := make([]byte, 4, 4+len(header)+len(body))
-	binary.BigEndian.PutUint32(buf[:4], uint32(len(header)))
+	binary.BigEndian.PutUint32(buf[:4], uint32(headerLen))
 	buf = append(buf, header...)
 	return append(buf, body...)
 }

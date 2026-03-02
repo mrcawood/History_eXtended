@@ -19,10 +19,10 @@ func TestImport_Segment(t *testing.T) {
 	storeDir := filepath.Join(tmpDir, "store")
 	blobDir := filepath.Join(tmpDir, "blobs")
 	dbPath := filepath.Join(tmpDir, "hx.db")
-	if err := os.MkdirAll(storeDir, 0755); err != nil {
+	if err := os.MkdirAll(storeDir, 0750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(blobDir, 0755); err != nil {
+	if err := os.MkdirAll(blobDir, 0750); err != nil {
 		t.Fatal(err)
 	}
 
@@ -94,10 +94,10 @@ func TestImport_Idempotent(t *testing.T) {
 	storeDir := filepath.Join(tmpDir, "store")
 	blobDir := filepath.Join(tmpDir, "blobs")
 	dbPath := filepath.Join(tmpDir, "hx.db")
-	if err := os.MkdirAll(storeDir, 0755); err != nil {
+	if err := os.MkdirAll(storeDir, 0750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(blobDir, 0755); err != nil {
+	if err := os.MkdirAll(blobDir, 0750); err != nil {
 		t.Fatal(err)
 	}
 
