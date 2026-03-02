@@ -9,12 +9,37 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        ports:
+          - 9000:9000
+          - 9001:9001
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-interval 30s
+          --health-timeout 20s
+          --health-retries 3
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
           go-version: '1.21'
+
+      - name: Setup MinIO
+        run: |
+          # Wait for MinIO to be ready
+          timeout 60 bash -c 'until curl -f http://localhost:9000/minio/health/live; do sleep 2; done'
+          # Configure MinIO client
+          docker run --rm --network host minio/mc:latest /bin/sh -c "
+            mc alias set myminio http://localhost:9000 minioadmin minioadmin &&
+            mc mb myminio/hx-test || true
+          "
 
       - name: Build
         run: go build -tags sqlite_fts5 -o /dev/null ./cmd/hx ./cmd/hxd ./cmd/hx-emit
@@ -25,6 +50,16 @@ jobs:
       - name: Phase 2A Integration Tests
         run: |
           go test ./testdata/integration/... -race -v
+
+      - name: Phase 2B S3 Integration Tests
+        run: |
+          HX_REQUIRE_S3_ENDPOINT=1 go test ./internal/sync/... -v -race \
+            -run "TestTwoNodeConverge_MinIO|TestTombstonePropagation_MinIO|TestCorruptManifest_MinIO|TestEfficiency_ManifestReducesListCalls|TestRetryableStore_MinIOIntegration"
+
+      - name: Security Validation Tests
+        run: |
+          go test ./internal/sync/... -v -race \
+            -run "TestValidate|TestSecure|TestSanitize|TestResource|TestPathTraversalPrevention"
 
       - name: Test Coverage
         run: |
