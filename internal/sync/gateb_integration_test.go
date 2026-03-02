@@ -35,10 +35,9 @@ func TestTwoNodeConverge_MinIO(t *testing.T) {
 	// Create bucket if it doesn't exist
 	// Note: In production, bucket creation would be outside of sync operations
 	// This is just for testing setup
-	// Skip bucket creation since Makefile creates it with mc CLI
-	// if err := CreateTestBucket(ctx, cfg); err != nil {
-	// 	t.Skipf("Failed to create test bucket: %v", err)
-	// }
+	if err := CreateTestBucket(ctx, cfg); err != nil {
+		t.Skipf("Failed to create test bucket: %v", err)
+	}
 
 	vaultID := "test-vault"
 	vaultKey := make([]byte, KeySize)
@@ -121,10 +120,9 @@ func TestTombstonePropagation_MinIO(t *testing.T) {
 	}
 
 	// Create bucket if needed
-	// Skip bucket creation since Makefile creates it with mc CLI
-	// if err := CreateTestBucket(ctx, cfg); err != nil {
-	// 	t.Skipf("Failed to create test bucket: %v", err)
-	// }
+	if err := CreateTestBucket(ctx, cfg); err != nil {
+		t.Skipf("Failed to create test bucket: %v", err)
+	}
 
 	vaultID := "test-vault"
 	vaultKey := make([]byte, KeySize)
@@ -182,10 +180,9 @@ func TestCorruptManifest_MinIO(t *testing.T) {
 	}
 
 	// Create bucket if needed
-	// Skip bucket creation since Makefile creates it with mc CLI
-	// if err := CreateTestBucket(ctx, cfg); err != nil {
-	// 	t.Skipf("Failed to create test bucket: %v", err)
-	// }
+	if err := CreateTestBucket(ctx, cfg); err != nil {
+		t.Skipf("Failed to create test bucket: %v", err)
+	}
 
 	vaultID := "test-vault"
 	vaultKey := make([]byte, KeySize)
@@ -250,10 +247,9 @@ func TestEfficiency_ManifestReducesListCalls(t *testing.T) {
 	}
 
 	// Create bucket if needed
-	// Skip bucket creation since Makefile creates it with mc CLI
-	// if err := CreateTestBucket(ctx, cfg); err != nil {
-	// 	t.Skipf("Failed to create test bucket: %v", err)
-	// }
+	if err := CreateTestBucket(ctx, cfg); err != nil {
+		t.Skipf("Failed to create test bucket: %v", err)
+	}
 
 	vaultID := "test-vault"
 	vaultKey := make([]byte, KeySize)
