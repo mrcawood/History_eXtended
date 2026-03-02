@@ -9,27 +9,27 @@ import (
 const (
 	// MaxManifestSize is the maximum allowed manifest size in bytes
 	MaxManifestSize = 10 * 1024 * 1024 // 10MB
-	
-	// MaxSegmentSize is the maximum allowed segment size in bytes  
+
+	// MaxSegmentSize is the maximum allowed segment size in bytes
 	MaxSegmentSize = 100 * 1024 * 1024 // 100MB
-	
+
 	// MaxTombstoneSize is the maximum allowed tombstone size in bytes
 	MaxTombstoneSize = 1024 // 1KB (tombstones should be small)
-	
+
 	// MaxObjectsPerPull is the maximum number of objects to process in one pull operation
 	MaxObjectsPerPull = 10000
-	
+
 	// MaxPullDuration is the maximum time budget for a pull operation
 	MaxPullDuration = 30 * 60 // 30 minutes
 )
 
 // Resource limit errors
 var (
-	ErrManifestTooLarge    = errors.New("manifest size exceeds maximum allowed")
-	ErrSegmentTooLarge     = errors.New("segment size exceeds maximum allowed")
-	ErrTombstoneTooLarge   = errors.New("tombstone size exceeds maximum allowed")
-	ErrTooManyObjects      = errors.New("too many objects to process in single operation")
-	ErrOperationTimeout    = errors.New("operation exceeded maximum duration")
+	ErrManifestTooLarge  = errors.New("manifest size exceeds maximum allowed")
+	ErrSegmentTooLarge   = errors.New("segment size exceeds maximum allowed")
+	ErrTombstoneTooLarge = errors.New("tombstone size exceeds maximum allowed")
+	ErrTooManyObjects    = errors.New("too many objects to process in single operation")
+	ErrOperationTimeout  = errors.New("operation exceeded maximum duration")
 )
 
 // ResourceLimiter enforces resource limits on sync operations
@@ -104,20 +104,20 @@ func ValidateManifest(manifest *Manifest) error {
 	// Check total number of objects
 	totalObjects := len(manifest.Segments) + len(manifest.Tombstones)
 	if totalObjects > MaxObjectsPerPull {
-		return fmt.Errorf("%w: manifest has %d objects, max %d", 
+		return fmt.Errorf("%w: manifest has %d objects, max %d",
 			ErrTooManyObjects, totalObjects, MaxObjectsPerPull)
 	}
-	
+
 	// Check individual object counts
 	if len(manifest.Segments) > MaxObjectsPerPull/2 {
-		return fmt.Errorf("%w: too many segments (%d), max %d", 
+		return fmt.Errorf("%w: too many segments (%d), max %d",
 			ErrTooManyObjects, len(manifest.Segments), MaxObjectsPerPull/2)
 	}
-	
+
 	if len(manifest.Tombstones) > MaxObjectsPerPull/2 {
-		return fmt.Errorf("%w: too many tombstones (%d), max %d", 
+		return fmt.Errorf("%w: too many tombstones (%d), max %d",
 			ErrTooManyObjects, len(manifest.Tombstones), MaxObjectsPerPull/2)
 	}
-	
+
 	return nil
 }

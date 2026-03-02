@@ -32,20 +32,9 @@ func Push(conn *sql.DB, syncStore SyncStore, vaultID, nodeID string, K_master []
 	}
 	defer rows.Close()
 
-	type ev struct {
-		eventID    int64
-		sessionID  string
-		seq        int
-		startedAt  float64
-		endedAt    sql.NullFloat64
-		durationMs sql.NullInt64
-		exitCode   sql.NullInt64
-		cwd        string
-		cmd        string
-	}
-	var events []ev
+	var events []event
 	for rows.Next() {
-		var e ev
+		var e event
 		if err := rows.Scan(&e.eventID, &e.sessionID, &e.seq, &e.startedAt, &e.endedAt, &e.durationMs, &e.exitCode, &e.cwd, &e.cmd); err != nil {
 			return nil, err
 		}
@@ -60,8 +49,80 @@ func Push(conn *sql.DB, syncStore SyncStore, vaultID, nodeID string, K_master []
 
 	// Build segment payload
 	segmentID := newUUID()
+	payload, err := buildSegmentPayload(conn, nodeID, events)
+	if err != nil {
+		return nil, err
+	}
+	h := &Header{
+		Magic:      Magic,
+		Version:    Version,
+		ObjectType: TypeSeg,
+		VaultID:    vaultID,
+		NodeID:     nodeID,
+		SegmentID:  segmentID,
+		CreatedAt:  time.Now(),
+	}
+
+	// Encode segment
+	raw, err := encodeSegmentData(payload, h, K_master, encrypt)
+	if err != nil {
+		return nil, err
+	}
+
+	key := SegmentKey(vaultID, nodeID, segmentID)
+	if err := syncStore.PutAtomic(key, raw); err != nil {
+		return nil, err
+	}
+
+	// Mark events as published
+	if err := markEventsAsPublished(conn, events, vaultID, nodeID, segmentID); err != nil {
+		return nil, err
+	}
+
+	res.SegmentsPublished = 1
+	res.EventsPublished = len(events)
+
+	// Publish manifest after successful segment publication
+	if err := PublishManifest(conn, syncStore, vaultID, nodeID, K_master, encrypt); err != nil {
+		// Log error but don't fail the push - manifest is best-effort
+		// In production, this would be logged and retried
+		return res, fmt.Errorf("publish manifest: %w", err)
+	}
+
+	return res, nil
+}
+
+// NewNodeID returns a new UUID for a sync node.
+func NewNodeID() string {
+	return newUUID()
+}
+
+// event represents a database event row
+type event struct {
+	eventID    int64
+	sessionID  string
+	seq        int
+	startedAt  float64
+	endedAt    sql.NullFloat64
+	durationMs sql.NullInt64
+	exitCode   sql.NullInt64
+	cwd        string
+	cmd        string
+}
+
+func newUUID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return hex.EncodeToString(b[0:4]) + "-" + hex.EncodeToString(b[4:6]) + "-" + hex.EncodeToString(b[6:8]) + "-" + hex.EncodeToString(b[8:10]) + "-" + hex.EncodeToString(b[10:16])
+}
+
+// buildSegmentPayload creates the segment payload and sessions from events
+func buildSegmentPayload(conn *sql.DB, nodeID string, events []event) (*SegmentPayload, error) {
 	segEvents := make([]SegmentEvent, len(events))
 	sessionIDs := make(map[string]bool)
+
 	for i, e := range events {
 		endedAt := e.startedAt
 		if e.endedAt.Valid {
@@ -104,69 +165,30 @@ func Push(conn *sql.DB, syncStore SyncStore, vaultID, nodeID string, K_master []
 		sessions = append(sessions, se)
 	}
 
-	payload := &SegmentPayload{Events: segEvents, Sessions: sessions}
-	h := &Header{
-		Magic:      Magic,
-		Version:    Version,
-		ObjectType: TypeSeg,
-		VaultID:    vaultID,
-		NodeID:     nodeID,
-		SegmentID:  segmentID,
-		CreatedAt:  time.Now(),
-	}
+	return &SegmentPayload{Events: segEvents, Sessions: sessions}, nil
+}
 
-	var raw []byte
+// encodeSegmentData encodes the segment payload with optional encryption
+func encodeSegmentData(payload *SegmentPayload, h *Header, K_master []byte, encrypt bool) ([]byte, error) {
 	if encrypt && len(K_master) == KeySize {
-		raw, err = EncodeSegment(h, payload, K_master, true)
-	} else {
-		raw, err = EncodeSegment(h, payload, nil, false)
+		return EncodeSegment(h, payload, K_master, true)
 	}
-	if err != nil {
-		return nil, err
-	}
+	return EncodeSegment(h, payload, nil, false)
+}
 
-	key := SegmentKey(vaultID, nodeID, segmentID)
-	if err := syncStore.PutAtomic(key, raw); err != nil {
-		return nil, err
-	}
-
+// markEventsAsPublished marks events as published in a transaction
+func markEventsAsPublished(conn *sql.DB, events []event, vaultID, nodeID string, segmentID string) error {
 	tx, err := conn.Begin()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer tx.Rollback()
+
 	for _, e := range events {
 		_, err = tx.Exec(`INSERT OR IGNORE INTO sync_published_events (event_id, vault_id, node_id, segment_id) VALUES (?, ?, ?, ?)`, e.eventID, vaultID, nodeID, segmentID)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	res.SegmentsPublished = 1
-	res.EventsPublished = len(events)
-
-	// Publish manifest after successful segment publication
-	if err := PublishManifest(conn, syncStore, vaultID, nodeID, K_master, encrypt); err != nil {
-		// Log error but don't fail the push - manifest is best-effort
-		// In production, this would be logged and retried
-		return res, fmt.Errorf("publish manifest: %w", err)
-	}
-
-	return res, nil
-}
-
-// NewNodeID returns a new UUID for a sync node.
-func NewNodeID() string {
-	return newUUID()
-}
-
-func newUUID() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return hex.EncodeToString(b[0:4]) + "-" + hex.EncodeToString(b[4:6]) + "-" + hex.EncodeToString(b[6:8]) + "-" + hex.EncodeToString(b[8:10]) + "-" + hex.EncodeToString(b[10:16])
+	return tx.Commit()
 }

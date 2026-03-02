@@ -70,7 +70,7 @@ func ValidateIdentifier(id, idType string) error {
 
 // SanitizePath ensures path components are safe
 func SanitizePath(components ...string) string {
-	var safe []string
+	safe := make([]string, 0, len(components))
 	for _, comp := range components {
 		// Remove any path separators and null bytes
 		clean := strings.ReplaceAll(comp, "/", "_")
