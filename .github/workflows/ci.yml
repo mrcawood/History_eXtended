@@ -31,15 +31,24 @@ jobs:
         with:
           go-version: '1.21'
 
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
+
       - name: Setup MinIO
         run: |
           # Wait for MinIO to be ready
           timeout 60 bash -c 'until curl -f http://localhost:9000/minio/health/live; do sleep 2; done'
-          # Configure MinIO client
-          docker run --rm --network host minio/mc:latest /bin/sh -c "
-            mc alias set myminio http://localhost:9000 minioadmin minioadmin &&
-            mc mb myminio/hx-test || true
-          "
+          # Set up AWS CLI for MinIO
+          aws configure set aws_access_key_id minioadmin
+          aws configure set aws_secret_access_key minioadmin
+          aws configure set default.region us-east-1
+          # Create test bucket
+          aws --endpoint-url http://localhost:9000 s3 mb s3://hx-test || true
+          # Verify bucket exists
+          aws --endpoint-url http://localhost:9000 s3 ls
 
       - name: Build
         run: go build -tags sqlite_fts5 -o /dev/null ./cmd/hx ./cmd/hxd ./cmd/hx-emit
