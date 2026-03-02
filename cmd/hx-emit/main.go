@@ -7,6 +7,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -78,7 +79,12 @@ func appendEvent(line string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			// Log error but don't overwrite the write error
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file: %v\n", closeErr)
+		}
+	}()
 	_, err = f.WriteString(line + "\n")
 	return err
 }

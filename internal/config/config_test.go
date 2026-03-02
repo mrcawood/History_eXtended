@@ -9,8 +9,14 @@ import (
 func TestLoadDefaults(t *testing.T) {
 	// No config file - use defaults
 	dir := t.TempDir()
-	os.Setenv("XDG_CONFIG_HOME", dir)
-	defer os.Unsetenv("XDG_CONFIG_HOME")
+	if err := os.Setenv("XDG_CONFIG_HOME", dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Unsetenv("XDG_CONFIG_HOME"); err != nil {
+			t.Logf("Warning: failed to unsetenv: %v", err)
+		}
+	}()
 
 	c, err := Load()
 	if err != nil {
@@ -43,8 +49,14 @@ retention_events_months: 6
 	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	os.Setenv("XDG_CONFIG_HOME", dir)
-	defer os.Unsetenv("XDG_CONFIG_HOME")
+	if err := os.Setenv("XDG_CONFIG_HOME", dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Unsetenv("XDG_CONFIG_HOME"); err != nil {
+			t.Logf("Warning: failed to unsetenv: %v", err)
+		}
+	}()
 
 	c, err := Load()
 	if err != nil {
@@ -61,17 +73,29 @@ retention_events_months: 6
 func TestLoadPathExpansion(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "hx")
-	os.MkdirAll(configDir, 0755)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 	configPath := filepath.Join(configDir, "config.yaml")
 	content := `spool_dir: $XDG_DATA_HOME/hx/spool
 `
-	os.WriteFile(configPath, []byte(content), 0644)
-	os.Setenv("XDG_CONFIG_HOME", dir)
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Setenv("XDG_CONFIG_HOME", dir); err != nil {
+		t.Fatal(err)
+	}
 	dataHome := filepath.Join(dir, "data")
-	os.Setenv("XDG_DATA_HOME", dataHome)
+	if err := os.Setenv("XDG_DATA_HOME", dataHome); err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
-		os.Unsetenv("XDG_CONFIG_HOME")
-		os.Unsetenv("XDG_DATA_HOME")
+		if err := os.Unsetenv("XDG_CONFIG_HOME"); err != nil {
+			t.Logf("Warning: failed to unsetenv: %v", err)
+		}
+		if err := os.Unsetenv("XDG_DATA_HOME"); err != nil {
+			t.Logf("Warning: failed to unsetenv: %v", err)
+		}
 	}()
 
 	c, err := Load()
@@ -87,14 +111,26 @@ func TestLoadPathExpansion(t *testing.T) {
 func TestLoadEnvOverride(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "hx")
-	os.MkdirAll(configDir, 0755)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 	configPath := filepath.Join(configDir, "config.yaml")
-	os.WriteFile(configPath, []byte("spool_dir: /from/file\n"), 0644)
-	os.Setenv("XDG_CONFIG_HOME", dir)
-	os.Setenv("HX_SPOOL_DIR", "/env/override")
+	if err := os.WriteFile(configPath, []byte("spool_dir: /from/file\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Setenv("XDG_CONFIG_HOME", dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Setenv("HX_SPOOL_DIR", "/env/override"); err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
-		os.Unsetenv("XDG_CONFIG_HOME")
-		os.Unsetenv("HX_SPOOL_DIR")
+		if err := os.Unsetenv("XDG_CONFIG_HOME"); err != nil {
+			t.Logf("Warning: failed to unsetenv: %v", err)
+		}
+		if err := os.Unsetenv("HX_SPOOL_DIR"); err != nil {
+			t.Logf("Warning: failed to unsetenv: %v", err)
+		}
 	}()
 
 	c, err := Load()
