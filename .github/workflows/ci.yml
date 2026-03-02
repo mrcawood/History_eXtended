@@ -9,20 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      minio:
-        image: minio/minio:RELEASE.2024-08-26T05-32-52Z
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-        ports:
-          - 9000:9000
-          - 9001:9001
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live"
-          --health-interval 30s
-          --health-timeout 20s
-          --health-retries 3
 
     steps:
       - uses: actions/checkout@v4
@@ -37,18 +23,37 @@ jobs:
           unzip awscliv2.zip
           sudo ./aws/install
 
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z \
+            server /data --console-address ":9001"
+
+          # Wait for readiness from the runner (don't rely on container health-cmd needing curl inside the image)
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              echo "MinIO is up"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs minio
+          exit 1
+
       - name: Setup MinIO
         run: |
-          # Wait for MinIO to be ready
-          timeout 60 bash -c 'until curl -f http://localhost:9000/minio/health/live; do sleep 2; done'
           # Set up AWS CLI for MinIO
           aws configure set aws_access_key_id minioadmin
           aws configure set aws_secret_access_key minioadmin
           aws configure set default.region us-east-1
           # Create test bucket
-          aws --endpoint-url http://localhost:9000 s3 mb s3://hx-test || true
+          aws --endpoint-url http://127.0.0.1:9000 s3 mb s3://hx-test || true
           # Verify bucket exists
-          aws --endpoint-url http://localhost:9000 s3 ls
+          aws --endpoint-url http://127.0.0.1:9000 s3 ls
 
       - name: Build
         run: go build -tags sqlite_fts5 -o /dev/null ./cmd/hx ./cmd/hxd ./cmd/hx-emit
@@ -61,8 +66,13 @@ jobs:
           go test ./testdata/integration/... -race -v
 
       - name: Phase 2B S3 Integration Tests
+        env:
+          HX_REQUIRE_S3_ENDPOINT: "1"
+          HX_S3_ENDPOINT: "http://127.0.0.1:9000"
+          HX_S3_ACCESS_KEY: "minioadmin"
+          HX_S3_SECRET_KEY: "minioadmin"
         run: |
-          HX_REQUIRE_S3_ENDPOINT=1 go test ./internal/sync/... -v -race \
+          go test ./internal/sync/... -v -race \
             -run "TestTwoNodeConverge_MinIO|TestTombstonePropagation_MinIO|TestCorruptManifest_MinIO|TestEfficiency_ManifestReducesListCalls|TestRetryableStore_MinIOIntegration"
 
       - name: Security Validation Tests
@@ -86,6 +96,12 @@ jobs:
           make build
           chmod +x scripts/validate.sh
           ./scripts/validate.sh
+
+      - name: Cleanup MinIO
+        if: always()
+        run: |
+          docker stop minio || true
+          docker rm minio || true
 
   lint:
     runs-on: ubuntu-latest
