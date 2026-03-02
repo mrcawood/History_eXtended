@@ -16,6 +16,7 @@ A local-first "flight recorder" for the terminal. Captures command events (text,
 - **Semantic search:** `hx query "<question>"` — natural-language search with optional Ollama embeddings and LLM summary
 - **History import:** `hx import --file ~/.zsh_history` — ingest existing shell history (zsh, bash, plain)
 - **Multi-device sync (Phase 2):** `hx sync init --store folder:/path` + `hx sync push` / `hx sync pull` — replicate history across devices via shared folder (NAS, Syncthing, removable media) with vault-based encryption and atomic publish guarantees
+- **S3-compatible sync (Phase 2B):** `hx sync init --store s3://bucket/prefix?region=us-west-2` — cloud sync via AWS S3, MinIO, Wasabi, or other S3-compatible storage with manifest-driven incremental sync and network resilience
 
 ## Quick start
 
@@ -53,6 +54,7 @@ See [INSTALL.md](INSTALL.md) for full setup.
 | `hx export [--session SID\|--last] [--redacted]` | Export session as markdown |
 | `hx import --file <path>` | Import shell history file |
 | `hx sync init --store folder:/path` | Initialize sync vault (Phase 2) |
+| `hx sync init --store s3://bucket/prefix?region=us-west-2` | Initialize S3 sync vault (Phase 2B) |
 | `hx sync status` | Sync state: vault, pending, imported |
 | `hx sync push` | Publish local events to store |
 | `hx sync pull` | Import from store into local DB |

@@ -25,9 +25,24 @@ Test results, validation evidence, and test gates
 - [`test_gate_phase2a.md`](validation/test_gate_phase2a.md) - Phase 2A test gate status
 - [`test_and_doc_review.md`](validation/test_and_doc_review.md) - Documentation and testing review
 
+### [`user_guide/`](user_guide/)
+User guides and tutorials
+- [`s3_sync.md`](user_guide/s3_sync.md) - Complete S3 sync setup and usage guide
+- Migration guides and troubleshooting
+
+### [`configuration/`](configuration/)
+Configuration reference and examples
+- [`reference.md`](configuration/reference.md) - Complete configuration options reference
+- Environment variables and configuration files
+
 ### [`runbooks/`](runbooks/)
 Operational guides and troubleshooting
-- *Coming soon for Phase 2B*
+- [`s3_troubleshooting.md`](runbooks/s3_troubleshooting.md) - S3 sync troubleshooting guide
+- Performance optimization and recovery procedures
+
+### [`developer/`](developer/)
+Developer documentation and APIs
+- [`syncstore_api.md`](developer/syncstore_api.md) - SyncStore interface documentation
 
 ### [`archive/`](archive/)
 Historical documentation and reports
@@ -45,7 +60,9 @@ Historical documentation and reports
 ### For Phase 2 Development
 1. **Phase 2A**: See [`validation/test_gate_phase2a.md`](validation/test_gate_phase2a.md) for completion status
 2. **Phase 2B**: See [`prd/phase2b.md`](prd/phase2b.md) for current requirements
-3. **Architecture**: Review [`architecture/sync_storage_contract_v0.md`](architecture/sync_storage_contract_v0.md) for storage contracts
+3. **S3 Sync Setup**: See [`user_guide/s3_sync.md`](user_guide/s3_sync.md) for complete setup guide
+4. **Configuration**: See [`configuration/reference.md`](configuration/reference.md) for all options
+5. **Architecture**: Review [`architecture/sync_storage_contract_v0.md`](architecture/sync_storage_contract_v0.md) for storage contracts
 
 ### For Operations
 1. **Status**: [`validation/status_report.md`](validation/status_report.md)
@@ -85,4 +102,4 @@ When adding new documentation:
 
 ---
 
-*Last updated: 2026-02-28*
+*Last updated: 2026-03-01*
