@@ -20,8 +20,8 @@ type Config struct {
 	AllowlistBins         []string `yaml:"allowlist_bins"`
 	IgnorePatterns        []string `yaml:"ignore_patterns"`
 	// Ollama (M5): semantic search and LLM explanations
-	OllamaEnabled   bool   `yaml:"ollama_enabled"`
-	OllamaBaseURL   string `yaml:"ollama_base_url"`
+	OllamaEnabled    bool   `yaml:"ollama_enabled"`
+	OllamaBaseURL    string `yaml:"ollama_base_url"`
 	OllamaEmbedModel string `yaml:"ollama_embed_model"`
 	OllamaChatModel  string `yaml:"ollama_chat_model"`
 }
@@ -36,10 +36,10 @@ type rawConfig struct {
 	AllowlistMode         bool     `yaml:"allowlist_mode"`
 	AllowlistBins         []string `yaml:"allowlist_bins"`
 	IgnorePatterns        []string `yaml:"ignore_patterns"`
-	OllamaEnabled        *bool    `yaml:"ollama_enabled"`
-	OllamaBaseURL        string   `yaml:"ollama_base_url"`
-	OllamaEmbedModel     string   `yaml:"ollama_embed_model"`
-	OllamaChatModel      string   `yaml:"ollama_chat_model"`
+	OllamaEnabled         *bool    `yaml:"ollama_enabled"`
+	OllamaBaseURL         string   `yaml:"ollama_base_url"`
+	OllamaEmbedModel      string   `yaml:"ollama_embed_model"`
+	OllamaChatModel       string   `yaml:"ollama_chat_model"`
 }
 
 // Load reads config from XDG_CONFIG_HOME/hx/config.yaml. Missing file uses defaults.

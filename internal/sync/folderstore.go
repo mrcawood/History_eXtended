@@ -79,11 +79,11 @@ func (f *FolderStore) PutAtomic(key string, data []byte) error {
 	tmpPath := filepath.Join(f.root, "tmp", tmpName())
 	// Ensure tmp parent exists
 	tmpDir := filepath.Dir(tmpPath)
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+	if err := os.MkdirAll(tmpDir, 0750); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
 	finalDir := filepath.Dir(finalPath)
-	if err := os.MkdirAll(finalDir, 0755); err != nil {
+	if err := os.MkdirAll(finalDir, 0750); err != nil {
 		return fmt.Errorf("mkdir objects: %w", err)
 	}
 

@@ -6,11 +6,11 @@ import (
 
 func TestParseZshExtended(t *testing.T) {
 	tests := []struct {
-		line        string
-		wantCmd     string
-		wantTs      float64
-		wantDurSec  int
-		wantOk      bool
+		line       string
+		wantCmd    string
+		wantTs     float64
+		wantDurSec int
+		wantOk     bool
 	}{
 		{`: 1458291931:15;make test`, "make test", 1458291931, 15, true},
 		{`: 1625963751:0;ls`, "ls", 1625963751, 0, true},

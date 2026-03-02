@@ -17,7 +17,7 @@ const (
 )
 
 var (
-	zshExtendedRe  = regexp.MustCompile(`^: (\d+):(\d+);(.*)$`)
+	zshExtendedRe   = regexp.MustCompile(`^: (\d+):(\d+);(.*)$`)
 	bashTimestampRe = regexp.MustCompile(`^#(\d{9,})$`)
 )
 
@@ -80,7 +80,7 @@ func DetectFormat(lines []string) Format {
 		if bashTimestampRe.MatchString(s) {
 			return FormatBash
 		}
-			// Non-empty, non-matching: continue scanning for format markers
+		// Non-empty, non-matching: continue scanning for format markers
 	}
 	return FormatPlain
 }

@@ -33,8 +33,8 @@ type PreEvent struct {
 type PostEvent struct {
 	T     string  `json:"t"`
 	Ts    float64 `json:"ts"`
-	Sid  string  `json:"sid"`
-	Seq  int     `json:"seq"`
+	Sid   string  `json:"sid"`
+	Seq   int     `json:"seq"`
 	Exit  int     `json:"exit"`
 	DurMs int64   `json:"dur_ms"`
 	Pipe  []int   `json:"pipe"`

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	KeySize  = 32
+	KeySize   = 32
 	NonceSize = 24 // XChaCha20-Poly1305
 )
 

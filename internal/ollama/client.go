@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	embedTimeout  = 30 * time.Second
-	generateTimeout = 60 * time.Second
+	embedTimeout     = 30 * time.Second
+	generateTimeout  = 60 * time.Second
 	availableTimeout = 5 * time.Second
 )
 
