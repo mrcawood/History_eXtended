@@ -19,7 +19,51 @@ func TestPush_PublishesSegment(t *testing.T) {
 	if err != nil {
 		t.Skipf("DB open failed: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
+
+	// Create sync tables needed for Push/PublishManifest
+	_, err = conn.Exec(`
+		CREATE TABLE IF NOT EXISTS sync_node_manifests (
+			vault_id TEXT NOT NULL,
+			node_id TEXT NOT NULL,
+			manifest_seq INTEGER NOT NULL,
+			published_at INTEGER NOT NULL,
+			PRIMARY KEY (vault_id, node_id)
+		)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = conn.Exec(`
+		CREATE TABLE IF NOT EXISTS sync_published_events (
+			vault_id TEXT NOT NULL,
+			node_id TEXT NOT NULL,
+			segment_id TEXT NOT NULL,
+			published_at INTEGER NOT NULL,
+			PRIMARY KEY (vault_id, node_id, segment_id)
+		)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = conn.Exec(`
+		CREATE TABLE IF NOT EXISTS sync_published_tombstones (
+			vault_id TEXT NOT NULL,
+			node_id TEXT NOT NULL,
+			tombstone_id TEXT NOT NULL,
+			published_at INTEGER NOT NULL,
+			PRIMARY KEY (vault_id, node_id, tombstone_id)
+		)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Seed a live event
 	st := store.New(conn)
