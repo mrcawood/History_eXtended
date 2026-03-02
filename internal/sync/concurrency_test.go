@@ -50,19 +50,31 @@ func TestConcurrentPullIdempotency(t *testing.T) {
 	// Setup mock store with test data
 	mockStore := NewMockSyncStoreForConcurrency()
 
-	// Add test manifest response
-	mockStore.listResponses = append(mockStore.listResponses, mockListResponse{
-		keys: []string{"vaults/test-vault/objects/manifests/test-node.hxman"},
-		err:  nil,
-	})
+	// Test parameters
+	vaultID := "test-vault"
+	nodeID := "test-node"
+	K_master := make([]byte, 32) // Dummy key
+	numGoroutines := 10
 
-	// Add manifest data
+	// Add test manifest response (one for each goroutine)
+	for i := 0; i < numGoroutines; i++ {
+		mockStore.listResponses = append(mockStore.listResponses, mockListResponse{
+			keys: []string{"vaults/test-vault/objects/manifests/test-node.hxman"},
+			err:  nil,
+		})
+	}
+
+	// Add manifest data (one for each goroutine)
 	manifestData := []byte(`{"vault_id":"test-vault","node_id":"test-node","manifest_seq":1,"segments":[{"segment_id":"seg-001","created_at":"2023-01-01T00:00:00Z"}],"tombstones":[],"capabilities":{"format_version":0,"supports":["segments","tombstones"]}}`)
-	mockStore.getResponses = append(mockStore.getResponses, mockGetResponse{data: manifestData, err: nil})
+	for i := 0; i < numGoroutines; i++ {
+		mockStore.getResponses = append(mockStore.getResponses, mockGetResponse{data: manifestData, err: nil})
+	}
 
-	// Add segment data
+	// Add segment data (one for each goroutine)
 	segmentData := []byte("test segment data")
-	mockStore.getResponses = append(mockStore.getResponses, mockGetResponse{data: segmentData, err: nil})
+	for i := 0; i < numGoroutines; i++ {
+		mockStore.getResponses = append(mockStore.getResponses, mockGetResponse{data: segmentData, err: nil})
+	}
 
 	// Setup in-memory database for testing
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -97,11 +109,6 @@ func TestConcurrentPullIdempotency(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
-	// Test parameters
-	vaultID := "test-vault"
-	nodeID := "test-node"
-	K_master := make([]byte, 32) // Dummy key
-	numGoroutines := 10
 	var wg sync.WaitGroup
 	results := make([]*PullResult, numGoroutines)
 
@@ -164,6 +171,9 @@ func TestConcurrentManifestSequenceAtomicity(t *testing.T) {
 		)
 	`)
 	require.NoError(t, err)
+
+	// Ensure table is created before starting goroutines
+	time.Sleep(10 * time.Millisecond)
 
 	// Test parameters
 	vaultID := "test-vault"

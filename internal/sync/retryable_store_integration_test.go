@@ -34,10 +34,9 @@ func TestRetryableStore_MinIOIntegration(t *testing.T) {
 	}
 
 	// Create bucket if needed
-	// Skip bucket creation since Makefile creates it with mc CLI
-	// if err := CreateTestBucket(ctx, cfg); err != nil {
-	// 	t.Skipf("Failed to create test bucket: %v", err)
-	// }
+	if err := CreateTestBucket(ctx, cfg); err != nil {
+		t.Skipf("Failed to create test bucket: %v", err)
+	}
 
 	// Wrap with retryable store
 	retryConfig := RetryConfig{
