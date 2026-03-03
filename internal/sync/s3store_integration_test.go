@@ -3,6 +3,8 @@ package sync
 import (
 	"context"
 	"fmt"
+	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -12,14 +14,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// minIOAvailable checks if MinIO is reachable at localhost:9000.
+// If HX_REQUIRE_S3_ENDPOINT=1, fails when unavailable; otherwise skips.
+func minIOAvailable(t *testing.T) {
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:9000", 2*time.Second)
+	if err == nil {
+		conn.Close()
+		return
+	}
+	if os.Getenv("HX_REQUIRE_S3_ENDPOINT") == "1" {
+		t.Fatalf("MinIO required but not reachable: %v", err)
+	}
+	t.Skipf("MinIO not available: %v", err)
+}
+
 // TestS3Store_MinIOIntegration tests S3Store against a real MinIO instance.
-// This test requires MinIO to be running on localhost:9000.
+// Requires MinIO on localhost:9000. Skips if unavailable unless HX_REQUIRE_S3_ENDPOINT=1.
 func TestS3Store_MinIOIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
+	minIOAvailable(t)
 
-	// Check if MinIO is available
 	ctx := context.Background()
 	cfg := S3Config{
 		Bucket:    "test-bucket",
@@ -33,6 +49,9 @@ func TestS3Store_MinIOIntegration(t *testing.T) {
 
 	store, err := NewS3Store(ctx, cfg)
 	if err != nil {
+		if os.Getenv("HX_REQUIRE_S3_ENDPOINT") == "1" {
+			t.Fatalf("NewS3Store failed: %v", err)
+		}
 		t.Skipf("MinIO not available: %v", err)
 	}
 
