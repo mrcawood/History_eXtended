@@ -13,7 +13,11 @@ func TestCmdID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
 	st := New(conn)
 
 	id1, err := st.CmdID("make test", 1700000000)
@@ -36,13 +40,19 @@ func TestInsertEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
 	st := New(conn)
 
 	pre := &PreEvent{Sid: "s1", Seq: 1, Ts: 1700000000, Cmd: "ls", Cwd: "/x", Tty: "pts/0", Host: "h"}
 	post := &PostEvent{Sid: "s1", Seq: 1, Ts: 1700000001, Exit: 0, DurMs: 1000, Pipe: []int{}}
 	cmdID, _ := st.CmdID(pre.Cmd, pre.Ts)
-	st.EnsureSession(pre.Sid, pre.Host, pre.Tty, pre.Cwd, pre.Ts)
+	if err := st.EnsureSession(pre.Sid, pre.Host, pre.Tty, pre.Cwd, pre.Ts); err != nil {
+		t.Fatalf("EnsureSession: %v", err)
+	}
 
 	inserted, err := st.InsertEvent(pre, post, cmdID)
 	if err != nil {
@@ -64,14 +74,22 @@ func TestPinSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
 	st := New(conn)
 
 	pre := &PreEvent{Sid: "pin-s1", Seq: 1, Ts: 1700000000, Cmd: "ls", Cwd: "/x", Tty: "pts/0", Host: "h"}
 	post := &PostEvent{Sid: "pin-s1", Seq: 1, Ts: 1700000001, Exit: 0, DurMs: 1000, Pipe: []int{}}
 	cmdID, _ := st.CmdID(pre.Cmd, pre.Ts)
-	st.EnsureSession(pre.Sid, pre.Host, pre.Tty, pre.Cwd, pre.Ts)
-	st.InsertEvent(pre, post, cmdID)
+	if err := st.EnsureSession(pre.Sid, pre.Host, pre.Tty, pre.Cwd, pre.Ts); err != nil {
+		t.Fatalf("EnsureSession: %v", err)
+	}
+	if _, err := st.InsertEvent(pre, post, cmdID); err != nil {
+		t.Fatalf("InsertEvent: %v", err)
+	}
 
 	if err := st.PinSession("pin-s1"); err != nil {
 		t.Fatalf("PinSession: %v", err)

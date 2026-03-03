@@ -26,7 +26,11 @@ func TestRunZsh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
 
 	inserted, skipped, _, err := Run(conn, historyPath, "", "zsh")
 	if err != nil {
@@ -63,7 +67,11 @@ func TestRunPlain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
 
 	inserted, _, _, err := Run(conn, historyPath, "myhost", "plain")
 	if err != nil {
@@ -101,7 +109,11 @@ ls -la
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
 
 	inserted, _, _, err := Run(conn, historyPath, "", "bash")
 	if err != nil {

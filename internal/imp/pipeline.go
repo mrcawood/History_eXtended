@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -53,99 +54,14 @@ func Run(db *sql.DB, sourceFile, sourceHost, sourceShell string) (int, int, bool
 	}
 
 	var inserted, skipped int
-	seq := 0
 
 	switch history.Format(shell) {
 	case history.FormatZsh:
-		for i, line := range lines {
-			cmd, startedAt, durSec, ok := history.ParseZshExtended(line)
-			if !ok {
-				skipped++
-				continue
-			}
-			seq++
-			hash := DedupHash(path, i+1, cmd)
-			if ins, _ := RecordOrSkip(db, hash); !ins {
-				seq--
-				continue
-			}
-			cmdID, err := st.CmdID(cmd, startedAt)
-			if err != nil {
-				skipped++
-				continue
-			}
-			durMs := int64(durSec) * 1000
-			ok2, _ := st.InsertImportEvent(cmd, startedAt, durMs, seq, sessionID, cmdID, "high", path, sourceHost, batchID)
-			if ok2 {
-				inserted++
-			}
-		}
+		inserted, skipped = processZshFormat(db, st, lines, path, sessionID, batchID, sourceHost)
 	case history.FormatBash:
-		for i := 0; i < len(lines); i++ {
-			cmd, startedAt, ok := history.ParseBashTimestamped(lines, i)
-			if !ok {
-				// May be plain line (mixed format)
-				cmd, plainOk := history.ParsePlain(lines[i])
-				if plainOk {
-					seq++
-					hash := DedupHash(path, i+1, cmd)
-					if ins, _ := RecordOrSkip(db, hash); ins {
-						cmdID, err := st.CmdID(cmd, importedAt)
-						if err == nil {
-							if ok2, _ := st.InsertImportEvent(cmd, importedAt, 0, seq, sessionID, cmdID, "low", path, sourceHost, batchID); ok2 {
-								inserted++
-							}
-						}
-					} else {
-						seq--
-					}
-				} else {
-					skipped++
-				}
-				continue
-			}
-			seq++
-			hash := DedupHash(path, i+2, cmd) // line_num of command line (i+2 = 1-based for second line)
-			if ins, _ := RecordOrSkip(db, hash); !ins {
-				seq--
-				i++ // skip cmd line
-				continue
-			}
-			cmdID, err := st.CmdID(cmd, startedAt)
-			if err != nil {
-				skipped++
-				i++ // skip cmd line
-				continue
-			}
-			ok2, _ := st.InsertImportEvent(cmd, startedAt, 0, seq, sessionID, cmdID, "medium", path, sourceHost, batchID)
-			if ok2 {
-				inserted++
-			}
-			i++ // consumed #ts + cmd
-		}
+		inserted, skipped = processBashFormat(db, st, lines, path, sessionID, batchID, sourceHost, importedAt)
 	default: // FormatPlain
-		for i, line := range lines {
-			cmd, ok := history.ParsePlain(line)
-			if !ok {
-				skipped++
-				continue
-			}
-			seq++
-			hash := DedupHash(path, i+1, cmd)
-			if ins, _ := RecordOrSkip(db, hash); !ins {
-				seq--
-				continue
-			}
-			cmdID, err := st.CmdID(cmd, importedAt)
-			if err != nil {
-				skipped++
-				continue
-			}
-			ok2, _ := st.InsertImportEvent(cmd, importedAt, 0, seq, sessionID, cmdID, "low", path, sourceHost, batchID)
-			if ok2 {
-				inserted++
-			}
-		}
+		inserted, skipped = processPlainFormat(db, st, lines, path, sessionID, batchID, sourceHost, importedAt)
 	}
 
 	// Update session ended_at
@@ -173,7 +89,12 @@ func readLines(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			// Log error but don't override original error
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file %s: %v\n", path, closeErr)
+		}
+	}()
 	var lines []string
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -188,4 +109,100 @@ func newBatchID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// processZshFormat handles zsh extended history format
+func processZshFormat(db *sql.DB, st *store.Store, lines []string, path, sessionID, batchID, sourceHost string) (int, int) {
+	var inserted, skipped int
+	for i, line := range lines {
+		cmd, startedAt, durSec, ok := history.ParseZshExtended(line)
+		if !ok {
+			skipped++
+			continue
+		}
+		hash := DedupHash(path, i+1, cmd)
+		if ins, _ := RecordOrSkip(db, hash); !ins {
+			continue
+		}
+		cmdID, err := st.CmdID(cmd, startedAt)
+		if err != nil {
+			skipped++
+			continue
+		}
+		durMs := int64(durSec) * 1000
+		ok2, _ := st.InsertImportEvent(cmd, startedAt, durMs, i+1, sessionID, cmdID, "high", path, sourceHost, batchID)
+		if ok2 {
+			inserted++
+		}
+	}
+	return inserted, skipped
+}
+
+// processBashFormat handles bash timestamped history format
+func processBashFormat(db *sql.DB, st *store.Store, lines []string, path, sessionID, batchID, sourceHost string, importedAt float64) (int, int) {
+	var inserted, skipped int
+	for i := 0; i < len(lines); i++ {
+		cmd, startedAt, ok := history.ParseBashTimestamped(lines, i)
+		if !ok {
+			// May be plain line (mixed format)
+			cmd, plainOk := history.ParsePlain(lines[i])
+			if plainOk {
+				hash := DedupHash(path, i+1, cmd)
+				if ins, _ := RecordOrSkip(db, hash); ins {
+					cmdID, err := st.CmdID(cmd, importedAt)
+					if err == nil {
+						if ok2, _ := st.InsertImportEvent(cmd, importedAt, 0, i+1, sessionID, cmdID, "low", path, sourceHost, batchID); ok2 {
+							inserted++
+						}
+					}
+				}
+			} else {
+				skipped++
+			}
+			continue
+		}
+		hash := DedupHash(path, i+2, cmd) // line_num of command line (i+2 = 1-based for second line)
+		if ins, _ := RecordOrSkip(db, hash); !ins {
+			i++ // skip cmd line
+			continue
+		}
+		cmdID, err := st.CmdID(cmd, startedAt)
+		if err != nil {
+			skipped++
+			i++ // skip cmd line
+			continue
+		}
+		ok2, _ := st.InsertImportEvent(cmd, startedAt, 0, i+1, sessionID, cmdID, "medium", path, sourceHost, batchID)
+		if ok2 {
+			inserted++
+		}
+		i++ // consumed #ts + cmd
+	}
+	return inserted, skipped
+}
+
+// processPlainFormat handles plain history format
+func processPlainFormat(db *sql.DB, st *store.Store, lines []string, path, sessionID, batchID, sourceHost string, importedAt float64) (int, int) {
+	var inserted, skipped int
+	for i, line := range lines {
+		cmd, ok := history.ParsePlain(line)
+		if !ok {
+			skipped++
+			continue
+		}
+		hash := DedupHash(path, i+1, cmd)
+		if ins, _ := RecordOrSkip(db, hash); !ins {
+			continue
+		}
+		cmdID, err := st.CmdID(cmd, importedAt)
+		if err != nil {
+			skipped++
+			continue
+		}
+		ok2, _ := st.InsertImportEvent(cmd, importedAt, 0, i+1, sessionID, cmdID, "low", path, sourceHost, batchID)
+		if ok2 {
+			inserted++
+		}
+	}
+	return inserted, skipped
 }

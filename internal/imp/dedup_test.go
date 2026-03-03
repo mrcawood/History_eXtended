@@ -32,7 +32,11 @@ func TestRecordOrSkip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
 
 	hash := DedupHash("test", 1, "cmd")
 	ins, err := RecordOrSkip(conn, hash)
