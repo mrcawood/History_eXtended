@@ -74,7 +74,7 @@ func TestCorruptDoesNotBlockValidImports(t *testing.T) {
 
 	// Verify that valid object was imported despite corrupt object presence
 	keysB, _ := nodeB.ListSegments()
-	
+
 	// Should contain the valid object
 	foundValid := false
 	for _, key := range keysB {
@@ -83,7 +83,7 @@ func TestCorruptDoesNotBlockValidImports(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !foundValid {
 		t.Errorf("Valid object %s should have been imported despite corrupt object presence", validKey)
 	}
@@ -96,7 +96,7 @@ func TestCorruptDoesNotBlockValidImports(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if foundCorrupt {
 		t.Errorf("Corrupt object %s should have been rejected during import", corruptKey)
 	}
@@ -106,11 +106,11 @@ func TestCorruptDoesNotBlockValidImports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to retrieve valid segment: %v", err)
 	}
-	
+
 	if len(retrievedPayload.Events) != 1 {
 		t.Errorf("Expected 1 event in valid segment, got %d", len(retrievedPayload.Events))
 	}
-	
+
 	if retrievedPayload.Events[0].Cmd != "echo valid" {
 		t.Errorf("Expected 'echo valid', got '%s'", retrievedPayload.Events[0].Cmd)
 	}
