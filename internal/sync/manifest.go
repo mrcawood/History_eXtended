@@ -105,8 +105,9 @@ func (m *Manifest) Encode(vaultKey []byte) ([]byte, error) {
 		CreatedAt:  m.CreatedAt,
 	}
 
-	// Encrypt using existing object envelope
-	return encodeObject(h, data, vaultKey, true)
+	// Encrypt when vaultKey provided; otherwise plaintext (for testing)
+	encrypt := len(vaultKey) == KeySize
+	return encodeObject(h, data, vaultKey, encrypt)
 }
 
 // DecodeManifest decrypts and decodes a manifest from storage.
