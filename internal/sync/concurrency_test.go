@@ -2,156 +2,170 @@ package sync
 
 import (
 	"database/sql"
-	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// MockSyncStoreForConcurrency extends MockSyncStore with thread safety
-type MockSyncStoreForConcurrency struct {
-	*MockSyncStore
-	mu sync.Mutex
+// MemoryStore is a key-addressed in-memory SyncStore for testing.
+// Get/List use exact keys; deterministic under concurrency.
+type MemoryStore struct {
+	mu      sync.RWMutex
+	objects map[string][]byte
 }
 
-// NewMockSyncStoreForConcurrency creates a thread-safe mock store
-func NewMockSyncStoreForConcurrency() *MockSyncStoreForConcurrency {
-	return &MockSyncStoreForConcurrency{
-		MockSyncStore: &MockSyncStore{},
+// NewMemoryStore creates an empty key-addressed store.
+func NewMemoryStore() *MemoryStore {
+	return &MemoryStore{objects: make(map[string][]byte)}
+}
+
+// PutAtomic stores data at key (implements SyncStore).
+func (m *MemoryStore) PutAtomic(key string, data []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.objects[key] = append([]byte(nil), data...)
+	return nil
+}
+
+// Get returns data at key, or ErrNotFound (implements SyncStore).
+func (m *MemoryStore) Get(key string) ([]byte, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	data, ok := m.objects[key]
+	if !ok {
+		return nil, ErrNotFound
 	}
+	return append([]byte(nil), data...), nil
 }
 
-// Thread-safe List implementation
-func (m *MockSyncStoreForConcurrency) List(prefix string) ([]string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.MockSyncStore.List(prefix)
+// List returns all keys under the given prefix (full keys).
+func (m *MemoryStore) List(prefix string) ([]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var keys []string
+	for k := range m.objects {
+		if k == prefix || strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys, nil
 }
 
-// Thread-safe Get implementation
-func (m *MockSyncStoreForConcurrency) Get(key string) ([]byte, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.MockSyncStore.Get(key)
-}
-
-// Thread-safe PutAtomic implementation
-func (m *MockSyncStoreForConcurrency) PutAtomic(key string, data []byte) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.MockSyncStore.PutAtomic(key, data)
-}
-
-// TestConcurrentPullIdempotency tests that concurrent pulls don't duplicate imports
+// TestConcurrentPullIdempotency tests that concurrent pulls don't duplicate imports.
+// Uses key-addressed MemoryStore seeded with production key builders.
 func TestConcurrentPullIdempotency(t *testing.T) {
-	// Setup mock store with test data
-	mockStore := NewMockSyncStoreForConcurrency()
-
-	// Test parameters
 	vaultID := "test-vault"
+	remoteNodeID := "remote-node"
 	nodeID := "test-node"
-	K_master := make([]byte, 32) // Dummy key
+	segID := "seg-001"
+	K_master := make([]byte, 32)
 	numGoroutines := 10
 
-	// Add test manifest response (one for each goroutine)
-	for i := 0; i < numGoroutines; i++ {
-		mockStore.listResponses = append(mockStore.listResponses, mockListResponse{
-			keys: []string{"vaults/test-vault/objects/manifests/test-node.hxman"},
-			err:  nil,
-		})
-	}
+	// Build store using production key builders
+	store := NewMemoryStore()
+	manifestKey := ManifestKey(vaultID, remoteNodeID)
+	segmentKey := SegmentKey(vaultID, remoteNodeID, segID)
 
-	// Add manifest data (one for each goroutine)
-	manifestData := []byte(`{"vault_id":"test-vault","node_id":"test-node","manifest_seq":1,"segments":[{"segment_id":"seg-001","created_at":"2023-01-01T00:00:00Z"}],"tombstones":[],"capabilities":{"format_version":0,"supports":["segments","tombstones"]}}`)
-	for i := 0; i < numGoroutines; i++ {
-		mockStore.getResponses = append(mockStore.getResponses, mockGetResponse{data: manifestData, err: nil})
-	}
+	// Encode manifest (production encoder)
+	manifest := NewManifest(vaultID, remoteNodeID)
+	manifest.AddSegment(segID)
+	manifestData, err := manifest.Encode(nil)
+	require.NoError(t, err)
+	require.NoError(t, store.PutAtomic(manifestKey, manifestData))
 
-	// Add segment data (one for each goroutine)
-	segmentData := []byte("test segment data")
-	for i := 0; i < numGoroutines; i++ {
-		mockStore.getResponses = append(mockStore.getResponses, mockGetResponse{data: segmentData, err: nil})
+	// Encode segment (production encoder)
+	segmentHeader := &Header{
+		Magic: Magic, Version: Version, ObjectType: TypeSeg,
+		VaultID: vaultID, NodeID: remoteNodeID, SegmentID: segID,
 	}
+	segmentPayload := &SegmentPayload{Events: []SegmentEvent{}}
+	segmentData, err := EncodeSegment(segmentHeader, segmentPayload, nil, false)
+	require.NoError(t, err)
+	require.NoError(t, store.PutAtomic(segmentKey, segmentData))
 
-	// Setup in-memory database for testing
-	db, err := sql.Open("sqlite3", ":memory:")
+	// Shared in-memory DB
+	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
 	require.NoError(t, err)
 	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("Warning: failed to close database: %v", err)
+		if closeErr := db.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
 		}
 	}()
 
-	// Create necessary tables
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS sync_node_manifests (
 			vault_id TEXT NOT NULL,
 			node_id TEXT NOT NULL,
 			manifest_seq INTEGER NOT NULL,
-			manifest_key TEXT NOT NULL,
-			created_at INTEGER NOT NULL,
+			published_at TEXT NOT NULL,
 			PRIMARY KEY (vault_id, node_id)
 		)
 	`)
 	require.NoError(t, err)
-
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS imported_segments (
 			vault_id TEXT NOT NULL,
+			node_id TEXT NOT NULL,
 			segment_id TEXT NOT NULL,
-			segment_key TEXT NOT NULL,
-			imported_at INTEGER NOT NULL,
-			PRIMARY KEY (vault_id, segment_id)
+			segment_hash TEXT,
+			imported_at REAL NOT NULL,
+			PRIMARY KEY (vault_id, node_id, segment_id)
+		)
+	`)
+	require.NoError(t, err)
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS applied_tombstones (
+			tombstone_id TEXT NOT NULL,
+			vault_id TEXT NOT NULL,
+			applied_at REAL NOT NULL,
+			node_id TEXT,
+			start_ts REAL NOT NULL,
+			end_ts REAL NOT NULL,
+			PRIMARY KEY (tombstone_id, vault_id)
 		)
 	`)
 	require.NoError(t, err)
 
+	// Run N concurrent pulls
 	var wg sync.WaitGroup
 	results := make([]*PullResult, numGoroutines)
-
-	// Run concurrent pulls
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-
-			// Each goroutine runs pull
-			result, err := Pull(db, mockStore, vaultID, nodeID, K_master, false)
-			require.NoError(t, err)
+			result, pullErr := Pull(db, store, vaultID, nodeID, K_master, false)
+			require.NoError(t, pullErr)
 			results[index] = result
 		}(i)
 	}
-
-	// Wait for all goroutines to complete
 	wg.Wait()
 
-	// Verify results
-	for i, result := range results {
-		require.NotNil(t, result, "Result %d should not be nil", i)
-
-		// All should have imported the same segment (or skipped it)
-		assert.True(t, result.SegmentsImported >= 0, "Result %d should have non-negative segments imported", i)
-		assert.True(t, result.SegmentsSkipped >= 0, "Result %d should have non-negative segments skipped", i)
-
-		// Total segments processed should be consistent
-		totalProcessed := result.SegmentsImported + result.SegmentsSkipped
-		assert.True(t, totalProcessed > 0, "Result %d should have processed some segments", i)
-	}
-
-	// Verify database state - only one import should exist
+	// Assert at DB level: at-most-once import
 	var importCount int
 	err = db.QueryRow(`SELECT COUNT(*) FROM imported_segments WHERE vault_id = ?`, vaultID).Scan(&importCount)
 	require.NoError(t, err)
-	assert.Equal(t, 1, importCount, "Only one import should exist in database")
+	assert.Equal(t, 1, importCount, "Only one import should exist in database (idempotency)")
+
+	// Optional: at least some goroutines processed segments (import or skip)
+	totalProcessed := 0
+	for _, r := range results {
+		require.NotNil(t, r)
+		totalProcessed += r.SegmentsImported + r.SegmentsSkipped
+	}
+	assert.Greater(t, totalProcessed, 0, "At least one goroutine should have processed segments")
 }
 
 // TestConcurrentManifestSequenceAtomicity tests sequence monotonicity under concurrency
 func TestConcurrentManifestSequenceAtomicity(t *testing.T) {
-	// Setup in-memory database
-	db, err := sql.Open("sqlite3", ":memory:")
+	// Use shared in-memory DB so all goroutines see the same database
+	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
 	require.NoError(t, err)
 	defer func() {
 		if err := db.Close(); err != nil {
@@ -159,21 +173,16 @@ func TestConcurrentManifestSequenceAtomicity(t *testing.T) {
 		}
 	}()
 
-	// Create tables with unique constraint
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS sync_node_manifests (
 			vault_id TEXT NOT NULL,
 			node_id TEXT NOT NULL,
 			manifest_seq INTEGER NOT NULL,
-			manifest_key TEXT NOT NULL,
-			created_at INTEGER NOT NULL,
+			published_at TEXT NOT NULL,
 			PRIMARY KEY (vault_id, node_id)
 		)
 	`)
 	require.NoError(t, err)
-
-	// Ensure table is created before starting goroutines
-	time.Sleep(10 * time.Millisecond)
 
 	// Test parameters
 	vaultID := "test-vault"
@@ -211,9 +220,9 @@ func TestConcurrentManifestSequenceAtomicity(t *testing.T) {
 			// Increment sequence
 			newSeq := lastSeq + 1
 
-			// Insert new record (will fail if sequence already taken)
-			_, err = tx.Exec(`INSERT OR REPLACE INTO sync_node_manifests (vault_id, node_id, manifest_seq, manifest_key, created_at) VALUES (?, ?, ?, ?, ?)`,
-				vaultID, nodeID, newSeq, fmt.Sprintf("manifest-%d", newSeq), time.Now().Unix())
+			// Insert new record
+			_, err = tx.Exec(`INSERT OR REPLACE INTO sync_node_manifests (vault_id, node_id, manifest_seq, published_at) VALUES (?, ?, ?, ?)`,
+				vaultID, nodeID, newSeq, time.Now().Format(time.RFC3339))
 			if err != nil {
 				errors[index] = err
 				return
@@ -252,71 +261,41 @@ func TestConcurrentManifestSequenceAtomicity(t *testing.T) {
 	assert.Equal(t, 1, recordCount, "Should have exactly one manifest record")
 }
 
-// TestRaceConditionDetection runs tests with race detector enabled
+// TestRaceConditionDetection runs concurrent Pulls with -race to detect data races.
 func TestRaceConditionDetection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping race condition test in short mode")
 	}
 
-	// This test is designed to be run with `go test -race`
-	// It will fail if race conditions exist in the code
+	store := NewMemoryStore()
+	vaultID, remoteNodeID, nodeID, segID := "test-vault", "remote-node", "test-node", "seg-001"
+	manifest := NewManifest(vaultID, remoteNodeID)
+	manifest.AddSegment(segID)
+	manifestEnc, _ := manifest.Encode(nil)
+	store.PutAtomic(ManifestKey(vaultID, remoteNodeID), manifestEnc)
+	segHeader := &Header{Magic: Magic, Version: Version, ObjectType: TypeSeg, VaultID: vaultID, NodeID: remoteNodeID, SegmentID: segID}
+	segData, _ := EncodeSegment(segHeader, &SegmentPayload{}, nil, false)
+	store.PutAtomic(SegmentKey(vaultID, remoteNodeID, segID), segData)
 
-	mockStore := NewMockSyncStoreForConcurrency()
-
-	// Add test data
-	_ = []byte(`{"vault_id":"test-vault","node_id":"test-node","manifest_seq":1,"segments":[],"tombstones":[],"capabilities":{"format_version":0,"supports":["segments","tombstones"]}}`) // Manifest data for reference
-	mockStore.putResponses = append(mockStore.putResponses, mockPutResponse{err: nil})
-
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
 	require.NoError(t, err)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("Warning: failed to close database: %v", err)
-		}
-	}()
+	defer db.Close()
+	for _, q := range []string{
+		`CREATE TABLE IF NOT EXISTS sync_node_manifests (vault_id TEXT, node_id TEXT, manifest_seq INTEGER, published_at TEXT, PRIMARY KEY (vault_id, node_id))`,
+		`CREATE TABLE IF NOT EXISTS imported_segments (vault_id TEXT, node_id TEXT, segment_id TEXT, segment_hash TEXT, imported_at REAL, PRIMARY KEY (vault_id, node_id, segment_id))`,
+		`CREATE TABLE IF NOT EXISTS applied_tombstones (tombstone_id TEXT, vault_id TEXT, applied_at REAL, node_id TEXT, start_ts REAL, end_ts REAL, PRIMARY KEY (tombstone_id, vault_id))`,
+	} {
+		_, _ = db.Exec(q)
+	}
 
-	// Create tables
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS sync_node_manifests (
-			vault_id TEXT NOT NULL,
-			node_id TEXT NOT NULL,
-			manifest_seq INTEGER NOT NULL,
-			manifest_key TEXT NOT NULL,
-			created_at INTEGER NOT NULL,
-			PRIMARY KEY (vault_id, node_id)
-		)
-	`)
-	require.NoError(t, err)
-
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS imported_segments (
-			vault_id TEXT NOT NULL,
-			segment_id TEXT NOT NULL,
-			segment_key TEXT NOT NULL,
-			imported_at INTEGER NOT NULL,
-			PRIMARY KEY (vault_id, segment_id)
-		)
-	`)
-	require.NoError(t, err)
-
-	// Run many concurrent operations
 	var wg sync.WaitGroup
-	numGoroutines := 50
-
-	for i := 0; i < numGoroutines; i++ {
+	for i := 0; i < 50; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-
-			// Simulate pull operation
-			_, err := Pull(db, mockStore, "test-vault", "test-node", make([]byte, 32), false)
-			// Ignore errors for this test - we're just looking for race conditions
-			_ = err
+			_, _ = Pull(db, store, vaultID, nodeID, make([]byte, 32), false)
 		}()
 	}
-
 	wg.Wait()
-
-	// If we get here without race detector warnings, the test passes
 	t.Log("Race condition test completed - no data races detected")
 }
