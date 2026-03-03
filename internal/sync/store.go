@@ -2,7 +2,7 @@ package sync
 
 import (
 	"errors"
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -20,21 +20,22 @@ type SyncStore interface {
 // Writers use tmp/<key>.partial then rename to objects/...
 
 // SegmentKey returns the store key for a segment.
+// Uses path.Join (not filepath) for OS-independent forward slashes (S3/folder contract).
 func SegmentKey(vaultID, nodeID, segmentID string) string {
-	return filepath.Join("vaults", vaultID, "objects", "segments", nodeID, segmentID+".hxseg")
+	return path.Join("vaults", vaultID, "objects", "segments", nodeID, segmentID+".hxseg")
 }
 
 // BlobKey returns the store key for a blob (sharded by hash: aa/bb/hash).
 func BlobKey(vaultID, blobHash string) string {
 	if len(blobHash) < 4 {
-		return filepath.Join("vaults", vaultID, "objects", "blobs", blobHash+".hxblob")
+		return path.Join("vaults", vaultID, "objects", "blobs", blobHash+".hxblob")
 	}
-	return filepath.Join("vaults", vaultID, "objects", "blobs", blobHash[:2], blobHash[2:4], blobHash+".hxblob")
+	return path.Join("vaults", vaultID, "objects", "blobs", blobHash[:2], blobHash[2:4], blobHash+".hxblob")
 }
 
 // TombstoneKey returns the store key for a tombstone.
 func TombstoneKey(vaultID, tombstoneID string) string {
-	return filepath.Join("vaults", vaultID, "objects", "tombstones", tombstoneID+".hxtomb")
+	return path.Join("vaults", vaultID, "objects", "tombstones", tombstoneID+".hxtomb")
 }
 
 // IsObjectKey returns true if key is under objects/ (not tmp/).

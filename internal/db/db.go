@@ -92,12 +92,31 @@ func migrateSync(conn *sql.DB) error {
 		CREATE TABLE IF NOT EXISTS sync_published_events (
 			event_id INTEGER NOT NULL,
 			vault_id TEXT NOT NULL,
+			node_id TEXT NOT NULL,
 			segment_id TEXT NOT NULL,
-			PRIMARY KEY (event_id, vault_id)
+			PRIMARY KEY (event_id, vault_id, node_id)
+		);
+		CREATE TABLE IF NOT EXISTS sync_node_manifests (
+			vault_id TEXT NOT NULL,
+			node_id TEXT NOT NULL,
+			manifest_seq INTEGER NOT NULL,
+			published_at TEXT NOT NULL,
+			PRIMARY KEY (vault_id, node_id)
 		);
 	`)
 	if err != nil {
 		return err
+	}
+	// Migrate sync_published_events: add node_id if missing (existing DBs)
+	var count int
+	err = conn.QueryRow("SELECT COUNT(*) FROM pragma_table_info('sync_published_events') WHERE name='node_id'").Scan(&count)
+	if err == nil && count == 0 {
+		_, err = conn.Exec("ALTER TABLE sync_published_events ADD COLUMN node_id TEXT NOT NULL DEFAULT ''")
+		if err != nil {
+			return fmt.Errorf("add node_id to sync_published_events: %w", err)
+		}
+		// Recreate table with correct PK for new installs; existing rows keep old PK
+		// For existing DBs with node_id='', writer will still insert node_id per row
 	}
 	return nil
 }

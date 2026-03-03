@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
+	"path"
 	"strings"
 	"time"
 
@@ -38,12 +38,12 @@ type ImportResult struct {
 // K_master is nil when encryption is disabled.
 func Import(conn *sql.DB, syncStore SyncStore, blobDir string, vaultID string, K_master []byte) (*ImportResult, error) {
 	res := &ImportResult{}
-	prefix := filepath.Join("vaults", vaultID, "objects")
+	prefix := path.Join("vaults", vaultID, "objects")
 
 	// List all object keys (segments, blobs, tombstones)
-	segKeys, _ := syncStore.List(filepath.Join(prefix, "segments"))
-	blobKeys, _ := syncStore.List(filepath.Join(prefix, "blobs"))
-	tombKeys, _ := syncStore.List(filepath.Join(prefix, "tombstones"))
+	segKeys, _ := syncStore.List(path.Join(prefix, "segments"))
+	blobKeys, _ := syncStore.List(path.Join(prefix, "blobs"))
+	tombKeys, _ := syncStore.List(path.Join(prefix, "tombstones"))
 
 	// Defense-in-depth: filter out tmp/partial files even if store listing doesn't
 	segKeys = filterImportableKeys(segKeys, res)
