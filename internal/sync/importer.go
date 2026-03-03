@@ -322,20 +322,20 @@ func importTombstone(conn *sql.DB, syncStore SyncStore, key string, vaultID stri
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		eventIDs = append(eventIDs, id)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
 	// Delete from events_fts and events
 	for _, id := range eventIDs {
-		conn.Exec(`DELETE FROM events_fts WHERE rowid=?`, id)
-		conn.Exec(`DELETE FROM events WHERE event_id=?`, id)
+		_, _ = conn.Exec(`DELETE FROM events_fts WHERE rowid=?`, id)
+		_, _ = conn.Exec(`DELETE FROM events WHERE event_id=?`, id)
 	}
 
 	_, err = conn.Exec(
@@ -378,7 +378,7 @@ func loadAppliedTombstones(conn *sql.DB, vaultID string) ([]tombstoneRec, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []tombstoneRec
 	for rows.Next() {
 		var r tombstoneRec

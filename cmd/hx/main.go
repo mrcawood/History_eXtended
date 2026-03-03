@@ -160,7 +160,7 @@ func cmdLast() {
 		fmt.Fprintf(os.Stderr, "hx last: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Last session = session of most recent event
 	var sessionID string
@@ -186,7 +186,7 @@ func cmdLast() {
 		fmt.Fprintf(os.Stderr, "hx last: %v\n", err)
 		os.Exit(1)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type evt struct {
 		seq  int
@@ -258,7 +258,7 @@ func cmdFind(query string) {
 		fmt.Fprintf(os.Stderr, "hx find: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// FTS5: escape double-quotes; use as phrase for multi-word
 	escaped := strings.ReplaceAll(query, "\"", "\"\"")
@@ -279,7 +279,7 @@ func cmdFind(query string) {
 		fmt.Fprintf(os.Stderr, "hx find: %v\n", err)
 		os.Exit(1)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	fmt.Printf("%-8s %-24s %4s %4s %-40s %s\n", "event_id", "session_id", "seq", "exit", "cwd", "cmd")
 	fmt.Println(strings.Repeat("-", 100))
@@ -343,7 +343,7 @@ func cmdAttach(args []string) {
 		fmt.Fprintf(os.Stderr, "hx attach: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	st := artifact.New(conn)
 	if linkSessionID == "" || linkSessionID == "last" {
 		sid, err := st.LastSessionID()
@@ -385,7 +385,7 @@ func cmdQuery(args []string) {
 		fmt.Fprintf(os.Stderr, "hx query: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if filePath != "" {
 		cmdQueryByFile(conn, filePath)
@@ -525,7 +525,7 @@ func cmdImport(args []string) {
 		fmt.Fprintf(os.Stderr, "hx import: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	inserted, skipped, truncated, err := imp.Run(conn, filePath, host, shell)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hx import: %v\n", err)
@@ -558,7 +558,7 @@ func cmdPin(args []string) {
 		fmt.Fprintf(os.Stderr, "hx pin: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	st := store.New(conn)
 	if useLast && sessionID == "" {
 		sid, err := st.LastSessionID()
@@ -605,7 +605,7 @@ func cmdForget(args []string) {
 		fmt.Fprintf(os.Stderr, "hx forget: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	n, err := retention.ForgetSince(conn, d)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hx forget: %v\n", err)
@@ -643,7 +643,7 @@ func cmdExport(args []string) {
 		fmt.Fprintf(os.Stderr, "hx export: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if useLast && sessionID == "" {
 		st := store.New(conn)
 		sid, err := st.LastSessionID()
@@ -671,7 +671,7 @@ func cmdDump() {
 		fmt.Fprintf(os.Stderr, "hx dump: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	rows, err := conn.Query(`
 		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.cwd, COALESCE(c.cmd_text, '')
@@ -684,7 +684,7 @@ func cmdDump() {
 		fmt.Fprintf(os.Stderr, "hx dump: %v\n", err)
 		os.Exit(1)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	fmt.Printf("%-8s %-24s %4s %4s %-40s %s\n", "event_id", "session_id", "seq", "exit", "cwd", "cmd")
 	fmt.Println(strings.Repeat("-", 100))
@@ -767,7 +767,7 @@ func cmdSyncInit(args []string) {
 		fmt.Fprintf(os.Stderr, "hx sync init: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	vaultID := "vault-" + vaultName
 	nodeID := sync.NewNodeID()
@@ -792,7 +792,7 @@ func cmdSyncStatus() {
 		fmt.Fprintf(os.Stderr, "hx sync status: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var vaultID, storePath, nodeID string
 	err = conn.QueryRow(`SELECT v.vault_id, v.store_path, n.node_id FROM sync_vaults v JOIN sync_nodes n ON n.vault_id = v.vault_id LIMIT 1`).Scan(&vaultID, &storePath, &nodeID)
@@ -805,8 +805,8 @@ func cmdSyncStatus() {
 	fmt.Printf("Node:  %s\n", nodeID)
 
 	var pending, imported int
-	conn.QueryRow(`SELECT COUNT(*) FROM events WHERE origin='live' AND event_id NOT IN (SELECT event_id FROM sync_published_events WHERE vault_id=?)`, vaultID).Scan(&pending)
-	conn.QueryRow(`SELECT COUNT(*) FROM imported_segments WHERE vault_id=?`, vaultID).Scan(&imported)
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM events WHERE origin='live' AND event_id NOT IN (SELECT event_id FROM sync_published_events WHERE vault_id=?)`, vaultID).Scan(&pending)
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM imported_segments WHERE vault_id=?`, vaultID).Scan(&imported)
 	fmt.Printf("Pending (unpublished): %d events\n", pending)
 	fmt.Printf("Imported segments: %d\n", imported)
 }
@@ -817,7 +817,7 @@ func cmdSyncPush() {
 		fmt.Fprintf(os.Stderr, "hx sync push: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var vaultID, storePath, nodeID string
 	err = conn.QueryRow(`SELECT v.vault_id, v.store_path, n.node_id FROM sync_vaults v JOIN sync_nodes n ON n.vault_id = v.vault_id LIMIT 1`).Scan(&vaultID, &storePath, &nodeID)
@@ -840,7 +840,7 @@ func cmdSyncPull() {
 		fmt.Fprintf(os.Stderr, "hx sync pull: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	cfg := getConfig()
 	blobDir := blob.BlobDir()

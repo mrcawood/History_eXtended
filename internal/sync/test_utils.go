@@ -32,13 +32,18 @@ func CreateTestBucket(ctx context.Context, cfg S3Config) error {
 	if cfg.Endpoint != "" {
 		awsCfg.EndpointResolverWithOptions = aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
 			return aws.Endpoint{
-				URL:           cfg.Endpoint,
-				SigningRegion: cfg.Region,
+				URL:               cfg.Endpoint,
+				SigningRegion:     cfg.Region,
+				HostnameImmutable: cfg.PathStyle,
 			}, nil
 		})
 	}
 
-	client := s3.NewFromConfig(awsCfg)
+	var clientOpts []func(*s3.Options)
+	if cfg.PathStyle {
+		clientOpts = append(clientOpts, func(o *s3.Options) { o.UsePathStyle = true })
+	}
+	client := s3.NewFromConfig(awsCfg, clientOpts...)
 
 	// Check if bucket exists
 	_, err = client.HeadBucket(ctx, &s3.HeadBucketInput{

@@ -94,7 +94,7 @@ func (s *Store) QueryByFile(filePath string, limit int) ([]LinkedSession, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []LinkedSession
 	for rows.Next() {
@@ -132,7 +132,7 @@ func (s *Store) GetSessionEvents(sessionID string, limit int) ([]EventWithCmd, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []EventWithCmd
 	for rows.Next() {

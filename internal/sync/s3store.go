@@ -65,7 +65,11 @@ func NewS3Store(ctx context.Context, cfg S3Config) (*S3Store, error) {
 		return nil, fmt.Errorf("load aws config: %w", err)
 	}
 
-	client := s3.NewFromConfig(awsCfg)
+	var clientOpts []func(*s3.Options)
+	if cfg.PathStyle {
+		clientOpts = append(clientOpts, func(o *s3.Options) { o.UsePathStyle = true })
+	}
+	client := s3.NewFromConfig(awsCfg, clientOpts...)
 	uploader := manager.NewUploader(client)
 	downloader := manager.NewDownloader(client)
 
@@ -124,8 +128,9 @@ func (s *S3Store) ListWithContext(ctx context.Context, prefix string) ([]string,
 		}
 
 		for _, obj := range resp.Contents {
-			// Return relative keys (remove prefix)
+			// Return relative keys (remove prefix and leading slash)
 			key := strings.TrimPrefix(*obj.Key, s.prefix)
+			key = strings.TrimPrefix(key, "/")
 			if key != "" {
 				keys = append(keys, key)
 			}
@@ -160,7 +165,7 @@ func (s *S3Store) GetWithContext(ctx context.Context, key string) ([]byte, error
 		}
 		return nil, fmt.Errorf("get object: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {

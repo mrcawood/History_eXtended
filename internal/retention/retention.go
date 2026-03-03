@@ -31,12 +31,12 @@ func PruneEvents(conn *sql.DB, cfg *config.Config) (int64, error) {
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return 0, err
 		}
 		eventIDs = append(eventIDs, id)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
@@ -48,7 +48,7 @@ func PruneEvents(conn *sql.DB, cfg *config.Config) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Delete from events_fts (rowid = event_id). Batch to avoid SQLITE_MAX_VARIABLE_NUMBER.
 	const batch = 500
@@ -133,7 +133,7 @@ func PruneBlobs(conn *sql.DB, blobDir string, cfg *config.Config) (int64, error)
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var toDelete []struct {
 		sha256 string
 		path   string
@@ -197,8 +197,8 @@ func PruneBlobs(conn *sql.DB, blobDir string, cfg *config.Config) (int64, error)
 				path = filepath.Join(blobDir, path)
 			}
 			_ = os.Remove(path)
-			conn.Exec(`DELETE FROM artifacts WHERE sha256 = ?`, sha)
-			conn.Exec(`DELETE FROM blobs WHERE sha256 = ?`, sha)
+			_, _ = conn.Exec(`DELETE FROM artifacts WHERE sha256 = ?`, sha)
+			_, _ = conn.Exec(`DELETE FROM blobs WHERE sha256 = ?`, sha)
 			deleted++
 		}
 	}
@@ -223,12 +223,12 @@ func ForgetSince(conn *sql.DB, since time.Duration) (int64, error) {
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return 0, err
 		}
 		eventIDs = append(eventIDs, id)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
@@ -240,7 +240,7 @@ func ForgetSince(conn *sql.DB, since time.Duration) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	const batch = 500
 	for i := 0; i < len(eventIDs); i += batch {

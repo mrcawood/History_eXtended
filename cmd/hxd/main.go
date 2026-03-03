@@ -64,16 +64,16 @@ func writePid(path string) error {
 func main() {
 	dbc, err := db.Open(dbPath())
 	if err != nil {
-		os.Stderr.WriteString("hxd: " + err.Error() + "\n")
+		_, _ = os.Stderr.WriteString("hxd: " + err.Error() + "\n")
 		os.Exit(1)
 	}
-	defer dbc.Close()
+	defer func() { _ = dbc.Close() }()
 
 	if err := writePid(pidPath()); err != nil {
-		os.Stderr.WriteString("hxd: cannot write pid file: " + err.Error() + "\n")
+		_, _ = os.Stderr.WriteString("hxd: cannot write pid file: " + err.Error() + "\n")
 		os.Exit(1)
 	}
-	defer os.Remove(pidPath())
+	defer func() { _ = os.Remove(pidPath()) }()
 
 	st := store.New(dbc)
 	eventsPath := spool.EventsPath(spoolDir())
@@ -87,14 +87,14 @@ func main() {
 	for {
 		n, err := ingest.Run(st, eventsPath, cfg)
 		if err != nil {
-			os.Stderr.WriteString("hxd: ingest: " + err.Error() + "\n")
+			_, _ = os.Stderr.WriteString("hxd: ingest: " + err.Error() + "\n")
 		}
 		if n > 0 {
 			// Could update last_ingest_at file for hx status
 		}
 		if time.Since(lastPrune) >= pruneInterval && cfg != nil {
-			retention.PruneEvents(dbc, cfg)
-			retention.PruneBlobs(dbc, blobDir, cfg)
+			_, _ = retention.PruneEvents(dbc, cfg)
+			_, _ = retention.PruneBlobs(dbc, blobDir, cfg)
 			lastPrune = time.Now()
 		}
 		time.Sleep(tick)

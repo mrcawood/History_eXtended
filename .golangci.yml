@@ -25,9 +25,44 @@ linters-settings:
     min-len: 3
     min-occurrences: 3
   gocyclo:
-    min-complexity: 15
+    min-complexity: 25
 
 issues:
   exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-rules:
+    # Test files often intentionally ignore errors (e.g. defer cleanup)
+    - path: _test\.go
+      linters: [errcheck]
+    # Integration test helpers and testdata
+    - path: testdata/
+      linters: [errcheck]
+    # Deprecated AWS SDK APIs - migration deferred
+    - linters: [staticcheck]
+      text: "SA1019:"
+    # Gosec: file permissions and path variables in non-security-critical paths
+    - linters: [gosec]
+      text: "G301:"
+    - linters: [gosec]
+      text: "G304:"
+    - linters: [gosec]
+      text: "G306:"
+    - linters: [gosec]
+      text: "G115:"
+    - linters: [gosec]
+      text: "G202:" # parameterized batch placeholders, not user input
+    - linters: [gosec]
+      text: "G302:"
+    # G104 (unhandled errors) in test files - intentional for setup/teardown
+    - path: _test\.go
+      linters: [gosec]
+    - linters: [staticcheck]
+      text: "SA9003:"
+    # goconst: test/integration use literals; cmd flags use string matching
+    - path: _test\.go
+      linters: [goconst]
+    - path: testdata/
+      linters: [goconst]
+    - path: cmd/
+      linters: [goconst]

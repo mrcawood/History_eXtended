@@ -28,7 +28,7 @@ func PublishManifest(conn *sql.DB, syncStore SyncStore, vaultID, nodeID string, 
 	if err != nil {
 		return fmt.Errorf("query published segments: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var segmentID string
@@ -51,7 +51,7 @@ func PublishManifest(conn *sql.DB, syncStore SyncStore, vaultID, nodeID string, 
 	if err != nil {
 		return fmt.Errorf("query published tombstones: %w", err)
 	}
-	defer tombRows.Close()
+	defer func() { _ = tombRows.Close() }()
 
 	for tombRows.Next() {
 		var tombstoneID string
@@ -86,7 +86,7 @@ func PublishManifest(conn *sql.DB, syncStore SyncStore, vaultID, nodeID string, 
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Insert or update manifest record
 	_, err = tx.Exec(`

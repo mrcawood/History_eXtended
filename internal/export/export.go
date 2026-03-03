@@ -67,7 +67,7 @@ func ExportSession(conn *sql.DB, sessionID string) (*SessionExport, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var artifacts []ArtifactRef
 	for rows.Next() {
 		var a ArtifactRef

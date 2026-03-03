@@ -67,7 +67,7 @@ func ftsCandidates(conn *sql.DB, query string, limit int) ([]Candidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanCandidates(rows)
 }
 
@@ -82,7 +82,7 @@ func recentCandidates(conn *sql.DB, limit int) ([]Candidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanCandidates(rows)
 }
 

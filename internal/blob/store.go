@@ -50,20 +50,20 @@ func Store(blobDir string, content []byte) (sha256Hex, storagePath string, byteL
 	if err != nil {
 		return "", "", 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w, err := zstd.NewWriter(f)
 	if err != nil {
-		os.Remove(storagePath)
+		_ = os.Remove(storagePath)
 		return "", "", 0, err
 	}
 	n, err := w.Write(content)
-	w.Close()
+	_ = w.Close()
 	if err != nil {
-		os.Remove(storagePath)
+		_ = os.Remove(storagePath)
 		return "", "", 0, err
 	}
 	if n != len(content) {
-		os.Remove(storagePath)
+		_ = os.Remove(storagePath)
 		return "", "", 0, fmt.Errorf("incomplete write")
 	}
 	return sha256Hex, storagePath, len(content), nil

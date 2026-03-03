@@ -94,20 +94,20 @@ func (f *FolderStore) PutAtomic(key string, data []byte) error {
 	_, err = fh.Write(data)
 	if err != nil {
 		_ = fh.Close()
-		os.Remove(tmpPath) // ignore cleanup error
+		_ = os.Remove(tmpPath) // ignore cleanup error
 		return err
 	}
 	if err := fh.Sync(); err != nil {
 		_ = fh.Close()
-		os.Remove(tmpPath) // ignore cleanup error
+		_ = os.Remove(tmpPath) // ignore cleanup error
 		return err
 	}
 	if err := fh.Close(); err != nil {
-		os.Remove(tmpPath) // ignore cleanup error
+		_ = os.Remove(tmpPath) // ignore cleanup error
 		return err
 	}
 	if err := os.Rename(tmpPath, finalPath); err != nil {
-		os.Remove(tmpPath) // ignore cleanup error
+		_ = os.Remove(tmpPath) // ignore cleanup error
 		return fmt.Errorf("atomic rename: %w", err)
 	}
 	return nil

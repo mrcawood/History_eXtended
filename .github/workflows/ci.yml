@@ -38,6 +38,14 @@ jobs:
           docker logs minio
           exit 1
 
+      - name: Create MinIO buckets
+        run: |
+          curl -sfLo /tmp/mc https://dl.min.io/client/mc/release/linux-amd64/mc
+          chmod +x /tmp/mc
+          /tmp/mc alias set local http://127.0.0.1:9000 minioadmin minioadmin
+          /tmp/mc mb local/test-bucket --ignore-existing
+          /tmp/mc mb local/hx-test --ignore-existing
+
       - name: Build
         run: go build -tags sqlite_fts5 -o /dev/null ./cmd/hx ./cmd/hxd ./cmd/hx-emit
 

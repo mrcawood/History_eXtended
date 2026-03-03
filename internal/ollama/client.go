@@ -47,7 +47,7 @@ func Embed(ctx context.Context, baseURL, model string, texts []string) ([][]floa
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("ollama embed: %s: %s", resp.Status, string(b))
@@ -92,7 +92,7 @@ func Generate(ctx context.Context, baseURL, model, prompt string) (string, error
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("ollama generate: %s: %s", resp.Status, string(b))
@@ -122,6 +122,6 @@ func Available(ctx context.Context, baseURL string) bool {
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
 }
