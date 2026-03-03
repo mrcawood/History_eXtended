@@ -56,7 +56,7 @@ jobs:
           HX_S3_SECRET_KEY: "minioadmin"
         run: |
           go test ./internal/sync/... -v -race \
-            -run "TestTwoNodeConverge_MinIO|TestTombstonePropagation_MinIO|TestCorruptManifest_MinIO|TestEfficiency_ManifestReducesListCalls|TestRetryableStore_MinIOIntegration"
+            -run "TestS3Store_MinIOIntegration|TestTwoNodeConverge_MinIO|TestTombstonePropagation_MinIO|TestCorruptManifest_MinIO|TestEfficiency_ManifestReducesListCalls|TestRetryableStore_MinIOIntegration"
 
       - name: Security Validation Tests
         run: |

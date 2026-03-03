@@ -29,10 +29,10 @@ func minIOAvailable(t *testing.T) {
 }
 
 // TestS3Store_MinIOIntegration tests S3Store against a real MinIO instance.
-// Requires MinIO on localhost:9000. Skips if unavailable unless HX_REQUIRE_S3_ENDPOINT=1.
+// Only runs when HX_REQUIRE_S3_ENDPOINT=1 (Phase 2B integration gate). Otherwise skips.
 func TestS3Store_MinIOIntegration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
+	if os.Getenv("HX_REQUIRE_S3_ENDPOINT") != "1" {
+		t.Skip("skipping MinIO integration test unless HX_REQUIRE_S3_ENDPOINT=1")
 	}
 	minIOAvailable(t)
 
@@ -54,6 +54,7 @@ func TestS3Store_MinIOIntegration(t *testing.T) {
 		}
 		t.Skipf("MinIO not available: %v", err)
 	}
+	require.NoError(t, store.EnsureBucket(ctx), "create test bucket")
 
 	// Test List pagination
 	t.Run("ListPagination", func(t *testing.T) {

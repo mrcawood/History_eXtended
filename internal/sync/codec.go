@@ -81,12 +81,13 @@ func encodeObject(h *Header, plaintext []byte, K_master []byte, encrypt bool) ([
 
 func marshalObject(header, body []byte) []byte {
 	headerLen := len(header)
-	if int64(headerLen) > math.MaxUint32 {
+	if headerLen < 0 || int64(headerLen) > math.MaxUint32 {
 		// Truncate header if too long (shouldn't happen in practice)
 		headerLen = int(math.MaxUint32)
 	}
+	hlen := uint32(headerLen)
 	buf := make([]byte, 4, 4+len(header)+len(body))
-	binary.BigEndian.PutUint32(buf[:4], uint32(headerLen))
+	binary.BigEndian.PutUint32(buf[:4], hlen)
 	buf = append(buf, header...)
 	return append(buf, body...)
 }

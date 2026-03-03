@@ -78,6 +78,22 @@ func NewS3Store(ctx context.Context, cfg S3Config) (*S3Store, error) {
 	}, nil
 }
 
+// EnsureBucket creates the bucket if it does not exist.
+// Used by integration tests; safe to call when bucket already exists.
+func (s *S3Store) EnsureBucket(ctx context.Context) error {
+	_, err := s.client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String(s.bucket)})
+	if err == nil {
+		return nil
+	}
+	// BucketAlreadyExists / BucketAlreadyOwnedByYou: idempotent, treat as success
+	var bucketExists *types.BucketAlreadyExists
+	var bucketOwned *types.BucketAlreadyOwnedByYou
+	if errors.As(err, &bucketExists) || errors.As(err, &bucketOwned) {
+		return nil
+	}
+	return err
+}
+
 // key returns the full S3 object key for a store key.
 func (s *S3Store) key(key string) string {
 	if s.prefix == "" {
