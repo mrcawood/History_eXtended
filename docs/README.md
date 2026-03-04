@@ -1,105 +1,80 @@
 # Documentation
 
-This directory contains the canonical documentation for the History eXtended project.
+**Start at [README.md](../README.md) and [INSTALL.md](../INSTALL.md) for user setup.** This folder is engineering and design documentation, not the user entrypoint.
 
 ---
 
-## 📁 Directory Structure
+## Directory Structure
 
 ### [`prd/`](prd/)
 Product Requirements Documents by phase
-- [`phase1.md`](prd/phase1.md) - Phase 1 requirements (local history capture)
 - [`phase2a.md`](prd/phase2a.md) - Phase 2A requirements (multi-device sync)
-- [`phase2b.md`](prd/phase2b.md) - Phase 2B requirements (cloud store, performance)
+- [`phase2b.md`](prd/phase2b.md) - Phase 2B requirements (cloud store, manifest-driven sync)
 
 ### [`architecture/`](architecture/)
 Technical specifications and architecture contracts
 - [`sync_storage_contract_v0.md`](architecture/sync_storage_contract_v0.md) - Sync storage interface contract
+- [`manifest_v0.md`](architecture/manifest_v0.md) - Manifest v0 spec
+- [`s3store.md`](architecture/s3store.md) - S3 store spec (implementation in `internal/sync`; not wired in CLI)
 - [`threat_model_phase2.md`](architecture/threat_model_phase2.md) - Phase 2 security analysis
 - [`phase2a_agent_context.md`](architecture/phase2a_agent_context.md) - Phase 2A implementation guidance
+- [`phase2b_agent_context.md`](architecture/phase2b_agent_context.md) - Phase 2B implementation guidance
+- [`history_import.md`](architecture/history_import.md) - History import design
+- [`hx_bash5_support_spec.md`](architecture/hx_bash5_support_spec.md) - Bash 5+ support spec
+
+### [`roadmap/`](roadmap/)
+Design and planned features (not yet in CLI)
+- [`s3_sync.md`](roadmap/s3_sync.md) - S3 sync user guide (Design/Roadmap — S3Store exists but CLI supports `folder:` only)
 
 ### [`validation/`](validation/)
 Test results, validation evidence, and test gates
-- [`status_report.md`](validation/status_report.md) - Overall project status and validation
+- [`status_report.md`](validation/status_report.md) - Overall project status
 - [`validation_appendix.md`](validation/validation_appendix.md) - Detailed validation results
 - [`test_gate_phase2a.md`](validation/test_gate_phase2a.md) - Phase 2A test gate status
-- [`test_and_doc_review.md`](validation/test_and_doc_review.md) - Documentation and testing review
-
-### [`user_guide/`](user_guide/)
-User guides and tutorials
-- [`s3_sync.md`](user_guide/s3_sync.md) - Complete S3 sync setup and usage guide
-- Migration guides and troubleshooting
+- [`phase2b_acceptance_checklist.md`](validation/phase2b_acceptance_checklist.md) - Phase 2B acceptance criteria
+- [`phase2b_security_verification.md`](validation/phase2b_security_verification.md) - Phase 2B security verification
 
 ### [`configuration/`](configuration/)
-Configuration reference and examples
-- [`reference.md`](configuration/reference.md) - Complete configuration options reference
-- Environment variables and configuration files
+- [`reference.md`](configuration/reference.md) - Configuration options reference
 
 ### [`runbooks/`](runbooks/)
-Operational guides and troubleshooting
-- [`s3_troubleshooting.md`](runbooks/s3_troubleshooting.md) - S3 sync troubleshooting guide
-- Performance optimization and recovery procedures
+- [`s3_troubleshooting.md`](runbooks/s3_troubleshooting.md) - S3 sync troubleshooting
 
 ### [`developer/`](developer/)
-Developer documentation and APIs
 - [`syncstore_api.md`](developer/syncstore_api.md) - SyncStore interface documentation
 
+### [`release/`](release/)
+- [`bash5_release_checklist.md`](release/bash5_release_checklist.md) - Bash 5+ release checklist
+
 ### [`archive/`](archive/)
-Historical documentation and reports
 - [`2026-02_phase2a_reports/`](archive/2026-02_phase2a_reports/) - Phase 2A development reports
 
 ---
 
-## 🚀 Quick Navigation
+## Quick Navigation
 
-### For New Contributors
-1. Start with [`../README.md`](../README.md) - Project overview and quick start
-2. Review [`../INSTALL.md`](../INSTALL.md) - Installation instructions
-3. Check [`../PROGRESS.md`](../PROGRESS.md) - Current development status
+### Start here (user docs)
+1. [README.md](../README.md) - Project overview and quick start
+2. [INSTALL.md](../INSTALL.md) - Installation and setup
 
-### For Phase 2 Development
-1. **Phase 2A**: See [`validation/test_gate_phase2a.md`](validation/test_gate_phase2a.md) for completion status
-2. **Phase 2B**: See [`prd/phase2b.md`](prd/phase2b.md) for current requirements
-3. **S3 Sync Setup**: See [`user_guide/s3_sync.md`](user_guide/s3_sync.md) for complete setup guide
-4. **Configuration**: See [`configuration/reference.md`](configuration/reference.md) for all options
-5. **Architecture**: Review [`architecture/sync_storage_contract_v0.md`](architecture/sync_storage_contract_v0.md) for storage contracts
+### Development
+1. [PROGRESS.md](../PROGRESS.md) - Current status and phase
+2. [prd.md](../prd.md) - Product requirements (root)
+3. [configuration/reference.md](configuration/reference.md) - Config options
 
-### For Operations
-1. **Status**: [`validation/status_report.md`](validation/status_report.md)
-2. **Validation**: [`validation/validation_appendix.md`](validation/validation_appendix.md)
-3. **Troubleshooting**: See [`runbooks/`](runbooks/) directory
+### Phase 2
+- Phase 2A: [test_gate_phase2a.md](validation/test_gate_phase2a.md)
+- Phase 2B: [prd/phase2b.md](prd/phase2b.md), [architecture/s3store.md](architecture/s3store.md)
+- Architecture: [sync_storage_contract_v0.md](architecture/sync_storage_contract_v0.md)
 
 ---
 
-## 📋 Document Standards
+## Related Files
 
-- **Naming**: `snake_case` for all filenames
-- **Location**: All project docs live under `docs/`
-- **Canonical**: One source of truth per topic
-- **Archive**: Historical reports moved to `archive/` by date
-
----
-
-## 🔗 Related Files
-
-Root-level files (project-level documentation):
-- [`../README.md`](../README.md) - Project overview and features
-- [`../INSTALL.md`](../INSTALL.md) - Installation and setup
-- [`../PROGRESS.md`](../PROGRESS.md) - Development progress and status
-- [`../prd.md`](../prd.md) - Legacy PRD (may be deprecated)
+- [../README.md](../README.md) - Project overview
+- [../INSTALL.md](../INSTALL.md) - Installation
+- [../PROGRESS.md](../PROGRESS.md) - Development status
 
 ---
 
-## 📝 Contributing
-
-When adding new documentation:
-
-1. Choose the appropriate directory based on content type
-2. Use `snake_case` naming convention
-3. Update this README for new canonical documents
-4. Archive outdated documents rather than deleting
-5. Keep links and references up to date
-
----
-
-*Last updated: 2026-03-01*
+*Last updated: 2026-03-04*

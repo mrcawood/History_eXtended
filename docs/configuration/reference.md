@@ -442,7 +442,7 @@ hx crypto test
 
 ## 📚 Additional Resources
 
-- [S3 Sync User Guide](../user_guide/s3_sync.md)
+- [S3 Sync User Guide (roadmap)](../roadmap/s3_sync.md)
 - [Security Best Practices](../architecture/threat_model_phase2.md)
 - [Performance Tuning Guide](../runbooks/performance_optimization.md)
 - [Troubleshooting Runbooks](../runbooks/)

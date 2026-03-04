@@ -7,27 +7,50 @@
 
 A local-first "flight recorder" for the terminal. Captures command events (text, timestamps, exit codes, cwd, session) with negligible overhead, stores them in SQLite, and provides evidence-backed retrieval.
 
-## Features
+## What is hx?
 
-- **Live capture:** zsh hooks record every command to a spool; daemon ingests into SQLite
-- **Search:** `hx find <text>` — full-text search over command history
-- **Sessions:** `hx last` — last session with failure highlights
-- **Artifacts:** `hx attach` / `hx query --file` — link build logs, tracebacks; find related sessions
-- **Semantic search:** `hx query "<question>"` — natural-language search with optional Ollama embeddings and LLM summary
-- **History import:** `hx import --file ~/.zsh_history` — ingest existing shell history (zsh, bash, plain)
-- **Multi-device sync (Phase 2):** `hx sync init --store folder:/path` + `hx sync push` / `hx sync pull` — replicate history across devices via shared folder (NAS, Syncthing, removable media) with vault-based encryption and atomic publish guarantees
-- **S3-compatible sync (Phase 2B):** `hx sync init --store s3://bucket/prefix?region=us-west-2` — cloud sync via AWS S3, MinIO, Wasabi, or other S3-compatible storage with manifest-driven incremental sync and network resilience
+hx records every command you run so you can search, review, and export your terminal history with full context.
 
-## Quick start
+## Why it's powerful
+
+- **Fast:** Hooks write to a spool; a daemon ingests asynchronously. No blocking, minimal latency.
+- **Searchable:** Full-text search via SQLite FTS5. Optional semantic search with Ollama.
+- **Evidence-backed:** Timestamps, exit codes, cwd, session IDs. Export sessions as markdown.
+- **Local-first:** Data stays on your machine. Optional sync via shared folder.
+
+---
+
+## Minimal quick start (single machine, no Ollama, no sync)
+
+Get searchable history in under a minute. No daemon or shell hooks required.
 
 ```bash
 make build
 make install   # optional: copies to ~/.local/bin
 
-# Start daemon
+# Import existing history
+hx import --file ~/.zsh_history
+
+# Search
+hx find make
+hx last
+# Optional: HX_DB_PATH=/path/to/db.db overrides DB location (e.g. if ~/.local/share is read-only)
+```
+
+See [INSTALL.md](INSTALL.md) for details.
+
+---
+
+## Live capture quick start (zsh)
+
+To capture new commands as you type:
+
+```bash
+make build
+make install
 hxd &
 
-# Enable capture (add to .zshrc)
+# Add to .zshrc
 source /path/to/History_eXtended/src/hooks/hx.zsh
 
 # Verify
@@ -35,7 +58,33 @@ hx status
 hx find make
 ```
 
-See [INSTALL.md](INSTALL.md) for full setup.
+See [INSTALL.md#live-capture-zsh](INSTALL.md#live-capture-zsh).
+
+---
+
+## Live capture quick start (bash ≥ 5)
+
+Bash 5+ is supported. Add to `.bashrc`:
+
+```bash
+source /path/to/History_eXtended/src/hooks/bash/hx.bash
+```
+
+See [INSTALL.md#live-capture-bash](INSTALL.md#live-capture-bash).
+
+---
+
+## Feature modules
+
+| Feature | What you get | Where |
+|--------|--------------|-------|
+| **Import-only** | Search imported history; no daemon or hooks | [INSTALL.md#import-only](INSTALL.md#import-only) |
+| **Live capture (zsh)** | Record every command in real time | [INSTALL.md#live-capture-zsh](INSTALL.md#live-capture-zsh) |
+| **Live capture (bash ≥ 5)** | Same for Bash 5+ | [INSTALL.md#live-capture-bash](INSTALL.md#live-capture-bash) |
+| **Ollama** | Semantic search and LLM summaries | [INSTALL.md#semantic-search-ollama](INSTALL.md#semantic-search-ollama) |
+| **Sync (folder)** | Multi-device sync via shared folder (NAS, Syncthing) | [INSTALL.md#multi-device-sync](INSTALL.md#multi-device-sync) |
+
+---
 
 ## Commands
 
@@ -53,19 +102,22 @@ See [INSTALL.md](INSTALL.md) for full setup.
 | `hx forget --since 15m\|1h\|24h\|7d` | Delete events in time window |
 | `hx export [--session SID\|--last] [--redacted]` | Export session as markdown |
 | `hx import --file <path>` | Import shell history file |
-| `hx sync init --store folder:/path` | Initialize sync vault (Phase 2) |
-| `hx sync init --store s3://bucket/prefix?region=us-west-2` | Initialize S3 sync vault (Phase 2B) |
+| `hx sync init --store folder:/path` | Initialize sync vault |
 | `hx sync status` | Sync state: vault, pending, imported |
 | `hx sync push` | Publish local events to store |
 | `hx sync pull` | Import from store into local DB |
 
+---
+
 ## Requirements
 
-- Go 1.21+
-- zsh (for live capture)
-- SQLite 3 with FTS5
-- Optional: [Ollama](https://ollama.com/) for semantic search and LLM summaries (`hx query "question"`)
+- **Go 1.21+** — [Install Go](https://go.dev/doc/install) (macOS: `brew install go`; Ubuntu/Debian: apt may lag; use official install)
+- **SQLite 3** with FTS5 (bundled via go-sqlite3)
+- **Shell:** zsh recommended; bash ≥ 5 supported for live capture
+- **Optional:** [Ollama](https://ollama.com/) for semantic search (`hx query "question"`)
+
+---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License — see [LICENSE](LICENSE) file for details.

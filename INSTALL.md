@@ -1,15 +1,30 @@
 # hx Install Guide
 
+## Choose your path
+
+| Path | What you get | Prereqs |
+|------|---------------|---------|
+| [Minimal (import-only)](#import-only) | Search imported history; no daemon or hooks | Go 1.21+, SQLite FTS5 |
+| [Live capture (zsh)](#live-capture-zsh) | Record every command in real time | Above + zsh, hxd |
+| [Live capture (bash ≥ 5)](#live-capture-bash) | Same for Bash 5+ | Above + bash ≥ 5 |
+| [Ollama](#semantic-search-ollama) | Semantic search + LLM summaries | Above + Ollama running |
+| [Sync (folder)](#multi-device-sync) | Multi-device sync via shared folder | Above + folder store |
+
+---
+
 ## Prerequisites
 
-- Go 1.21+
-- **Shells:** zsh (recommended), or bash ≥ 5.0 (supported)
+- **Go 1.21+** — [Install Go](https://go.dev/doc/install)
+  - macOS: `brew install go`
+  - Ubuntu/Debian: apt may lag; use [official install](https://go.dev/doc/install)
+- **SQLite 3** with FTS5 (bundled via go-sqlite3; `make build` uses `-tags sqlite_fts5`)
+- **Shells:** zsh (recommended), or bash ≥ 5.0 (for live capture)
 
 ## Build and test
 
 ```bash
 make build
-# Builds with sqlite_fts5 tag for hx find. If FTS5 fails, remove -tags sqlite_fts5 from hx and hxd in Makefile.
+# If FTS5 fails, remove -tags sqlite_fts5 from hx and hxd in Makefile.
 
 make test      # Run all tests (requires FTS5)
 make test-sync # Run sync package tests only
@@ -24,116 +39,133 @@ make install
 
 Ensure `~/.local/bin` is on your PATH.
 
+---
+
+## Import-only {#import-only}
+
+Minimal path: no daemon, no shell hooks. Import existing history and search.
+
+**Prereqs:** Go 1.21+, SQLite FTS5
+
+**Steps:**
+
+1. `make build` (and optionally `make install`)
+2. `hx import --file ~/.zsh_history` (or `~/.bash_history`, `--shell bash`)
+3. `hx find <text>` and `hx last`
+
+**Verify:** `hx find make` returns matches. `hx status` shows DB path; daemon may be "not running" (fine for import-only).
+
+---
+
 ## Daemon (hxd)
 
-The daemon ingests spool events into SQLite. Start it manually or via your session manager:
+Required for live capture. Ingest spool events into SQLite:
 
 ```bash
 hxd &
 # or: nohup hxd &
 ```
 
-`hx status` shows daemon health (running / not running) and DB path. `hx dump` prints the last 20 ingested events (no sqlite3 CLI needed).
+`hx status` shows daemon health. `hx dump` prints the last 20 ingested events.
 
-## Search and sessions
+---
 
-- **hx find \<text\>** — full-text search over command history (FTS5). Returns matching events with session, seq, exit code, cwd.
-- **hx last** — last session summary; highlights failures (exit ≠ 0) with 1–2 commands before/after.
+## Live capture (zsh) {#live-capture-zsh}
 
-## Enable capture (zsh)
+**What you get:** Every command recorded to spool; daemon ingests into SQLite.
 
-Add to `.zshrc`:
+**Prereqs:** Go 1.21+, SQLite FTS5, zsh, hxd running
+
+**Steps:**
+
+1. Build and install (see above). Start `hxd &`.
+2. Add to `.zshrc`:
 
 ```bash
 # hx terminal capture
 source /path/to/History_eXtended/src/hooks/hx.zsh
 ```
 
-Or, if you installed via `make install` and the repo is at `~/projects/History_eXtended`:
-
-```bash
-source ~/projects/History_eXtended/src/hooks/hx.zsh
-```
-
-**Important:** `hx-emit` must be on PATH when the hooks run. If you used `make install`, add `~/.local/bin` to PATH before sourcing the hook (e.g. in `.zshrc`):
+Or with repo at `~/projects/History_eXtended`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 source ~/projects/History_eXtended/src/hooks/hx.zsh
 ```
 
-## Enable capture (Bash ≥ 5)
+**Important:** `hx-emit` must be on PATH when the hooks run.
 
-Supported shells: zsh (recommended), bash ≥ 5.0 (supported). macOS ships Bash 3.2 by default; install a newer Bash (e.g. `brew install bash`) and set it as your login shell or configure your terminal to launch it.
+**Verify:** New shell, run `echo hi`, `hx status`, `hx find hi`.
 
-Add to `.bashrc` or `.bash_profile`:
+---
+
+## Live capture (bash ≥ 5) {#live-capture-bash}
+
+**What you get:** Same as zsh; Bash 5+ supported. macOS ships Bash 3.2; install newer (`brew install bash`).
+
+**Prereqs:** Go 1.21+, SQLite FTS5, bash ≥ 5, hxd running
+
+**Steps:**
+
+1. Build and install. Start `hxd &`.
+2. Add to `.bashrc` or `.bash_profile`:
 
 ```bash
 # hx terminal capture (Bash 5+)
+export PATH="$HOME/.local/bin:$PATH"
 source /path/to/History_eXtended/src/hooks/bash/hx.bash
 ```
 
-Ensure `hx-emit` is on PATH (e.g. `export PATH="$HOME/.local/bin:$PATH"` before sourcing the hook).
+To force on Bash < 5 (unsupported, best-effort): set `HX_BASH_ALLOW_UNSUPPORTED=1` before sourcing.
 
-To force the hook to load on Bash < 5 (unsupported, best-effort only), set `HX_BASH_ALLOW_UNSUPPORTED=1` before sourcing.
+**Verify:** New shell, run commands, `hx status`, `hx find <text>`.
 
-## Verify
+---
 
-1. Open a new shell (zsh or Bash 5+: `source ~/.zshrc` or `source ~/.bashrc`).
-2. Run a few commands: `echo hi`, `pwd`, `false`.
-3. Check status: `hx status`
-4. Inspect spool: `tail ~/.local/share/hx/spool/events.jsonl` or `hx dump` (queries DB, no sqlite3 needed)
+## Search and sessions
 
-You should see `pre` and `post` events for each command (zsh emits pre+post separately; Bash hook emits both in one `cmd` call).
+- **hx find \<text\>** — full-text search (FTS5). Returns matching events with session, seq, exit code, cwd.
+- **hx last** — last session summary; highlights failures with 1–2 commands before/after.
+
+---
 
 ## Pause / Resume
 
-- `hx pause` — stop capturing (creates `~/.local/share/hx/.paused`)
+- `hx pause` — stop capturing
 - `hx resume` — resume capturing
+
+---
 
 ## Data locations
 
 - Spool: `$XDG_DATA_HOME/hx/spool/events.jsonl` (default: `~/.local/share/hx/spool/`)
-- DB: `$XDG_DATA_HOME/hx/hx.db` (daemon ingests spool → DB)
+- DB: `$XDG_DATA_HOME/hx/hx.db`
 - Pause flag: `$XDG_DATA_HOME/hx/.paused`
 - Daemon PID: `$XDG_DATA_HOME/hx/hxd.pid`
 
-Override with `HX_SPOOL_DIR`, `HX_DB_PATH`, `HX_BLOB_DIR` if needed.
+Override with `HX_SPOOL_DIR`, `HX_DB_PATH`, `HX_BLOB_DIR`.
+
+---
 
 ## Config
 
-Optional config at `~/.config/hx/config.yaml` (or `$XDG_CONFIG_HOME/hx/config.yaml`):
+Optional: `~/.config/hx/config.yaml` (or `$XDG_CONFIG_HOME/hx/config.yaml`). Copy `config/config.yaml.example` and edit.
 
 ```yaml
-# Paths (defaults use $XDG_DATA_HOME/hx/...)
-# spool_dir: $XDG_DATA_HOME/hx/spool
-# blob_dir: $XDG_DATA_HOME/hx/blobs
-# db_path: $XDG_DATA_HOME/hx/hx.db
-
 retention_events_months: 12
 retention_blobs_days: 90
 blob_disk_cap_gb: 2.0
 
-# Privacy: allowlist or ignore patterns (optional)
-# allowlist_mode: true   # capture only listed binaries
-# allowlist_bins: [git, make, cmake, pytest, srun, sbatch]
-# ignore_patterns: ['*password*', '*secret*']   # shell globs; matched commands are not captured
-
-# Ollama (M5) - optional semantic search
+# Ollama (optional)
 # ollama_enabled: true
 # ollama_base_url: http://localhost:11434
-# ollama_embed_model: nomic-embed-text
-# ollama_chat_model: llama3.2
 ```
 
-Copy `config/config.yaml.example` and edit. Env vars `HX_SPOOL_DIR`, `HX_BLOB_DIR`, `HX_DB_PATH` override config.
+Env vars `HX_SPOOL_DIR`, `HX_BLOB_DIR`, `HX_DB_PATH` override config.
 
-- **allowlist_mode:** When true, capture only commands whose first token (binary) is in `allowlist_bins`. Use for conservative capture.
-- **ignore_patterns:** Shell globs (e.g. `*password*`) to skip; any command matching a pattern is not captured.
+---
 
 ## History import
-
-Import existing shell history (zsh extended, bash timestamped, or plain):
 
 ```bash
 hx import --file ~/.zsh_history
@@ -141,66 +173,72 @@ hx import --file ~/.bash_history --shell bash
 hx import --file history.txt --host my-laptop
 ```
 
-Re-importing the same file is idempotent (duplicates skipped). Imported events appear in `hx find` and `hx last`.
+Idempotent; duplicates skipped. Imported events appear in `hx find` and `hx last`.
 
-## Retention and privacy (M6)
+---
 
-- **Pin session:** `hx pin --last` or `hx pin --session <SID>` — exempt from retention pruning (events and linked blobs kept)
-- **Forget window:** `hx forget --since 15m` (or 1h, 24h, 7d) — hard-delete events in that window; data is not retrievable after forget
-- **Export:** `hx export --last --redacted` — markdown evidence packet; `--redacted` sanitizes timestamps and tokens for sharing
+## Multi-device sync {#multi-device-sync}
 
-The daemon (hxd) runs retention pruning every 10 minutes:
-- **Events:** older than 12 months (configurable via `retention_events_months`)
-- **Blobs:** older than 90 days (`retention_blobs_days`) **and** blob store capped by `blob_disk_cap_gb` (oldest evicted first)
-- **Pinned sessions:** never pruned (exempt from both events and blob retention)
+Sync via shared folder (NAS, Syncthing, removable drive). **CLI supports `folder:` store only.**
 
-**Recovery:** After a crash, the daemon replays the spool on restart. Events are ingested idempotently (duplicates skipped). If the spool is corrupted, the daemon skips the bad line and continues. Data in the DB is preserved.
+**What you get:** Replicate history across devices with vault-based storage.
 
-## Artifacts (hx attach, hx query)
+**Prereqs:** Live capture or import; folder path accessible from all devices
 
-- **Attach a log:** `hx attach --file build.log` (links to last session by default)
-- **Query by file:** `hx query --file error.log` — finds artifacts with same skeleton hash, returns related sessions
-
-## Multi-device sync (Phase 2, hx sync)
-
-Sync history across devices using a shared folder (NAS, Syncthing, removable drive):
+**Steps:**
 
 ```bash
-# One-time setup: pick a sync directory
+# One-time setup
 hx sync init --store folder:/path/to/HXSync
-# Optional: hx sync init --store folder:/mnt/nas/hx --vault-name my-vault
+# Optional: --vault-name my-vault
 
-# Push local events to the store
-hx sync push
-
-# On another device (same store path): pull imported history
-hx sync pull
-
-# Check state
-hx sync status
+hx sync push   # Publish local events
+hx sync pull   # On another device: import from store
+hx sync status # Check state
 ```
 
-- **Store:** A directory (e.g. NAS mount, Syncthing folder). Objects are written atomically.
-- **v0:** Plaintext only (`--no-encrypt`); E2EE configurable later.
-- Requires `hx sync init` before push/pull.
+**Verify:** `hx sync status` shows vault, pending, imported counts.
 
-## Semantic search (hx query, optional Ollama)
+---
 
-Ask natural-language questions over your command history:
+## Semantic search (Ollama) {#semantic-search-ollama}
+
+**What you get:** Natural-language search and LLM summaries.
+
+**Prereqs:** [Ollama](https://ollama.com/) running; `nomic-embed-text`, `llama3.2` (or configured models)
 
 ```bash
 hx query "how did I fix the make build"
-hx query "pytest test run" --no-llm
+hx query "pytest test run" --no-llm   # FTS only, no LLM
 ```
 
-- **With Ollama:** Uses embeddings for semantic re-ranking and an LLM to summarize evidence. Requires [Ollama](https://ollama.com/) running with `nomic-embed-text` and `llama3.2` (or configured models).
-- **Without Ollama / --no-llm:** Uses FTS only; always returns ranked evidence.
+Config: `ollama_enabled: true` in `~/.config/hx/config.yaml`. See [Config](#config).
 
-Config in `~/.config/hx/config.yaml`:
+---
 
-```yaml
-ollama_enabled: true
-ollama_base_url: http://localhost:11434
-ollama_embed_model: nomic-embed-text
-ollama_chat_model: llama3.2
-```
+## Retention and privacy
+
+- **Pin:** `hx pin --last` — exempt from retention
+- **Forget:** `hx forget --since 15m` (1h, 24h, 7d)
+- **Export:** `hx export --last --redacted`
+
+Daemon prunes events > 12 months, blobs > 90 days. Pinned sessions exempt.
+
+---
+
+## Artifacts
+
+- `hx attach --file build.log` — link to last session
+- `hx query --file error.log` — find sessions with similar artifact
+
+---
+
+## Troubleshooting
+
+| Issue | Action |
+|-------|--------|
+| **hxd not running / hx status unhealthy** | Start daemon: `hxd &`. Check `~/.local/share/hx/hxd.pid`; if stale, remove and restart. |
+| **Capture paused** | `hx resume` removes `~/.local/share/hx/.paused`. |
+| **SQLite FTS5 missing** | Build without `-tags sqlite_fts5`; `hx find` will fail. Install SQLite dev package or use a Go/SQLite build with FTS5. |
+| **Ollama not running** | `hx query` falls back to FTS with `--no-llm`. For semantic search, start Ollama and ensure models are pulled. |
+| **Sync init fails** | Use `folder:/path` format. Path must exist and be writable. S3 store not yet wired in CLI. |

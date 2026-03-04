@@ -697,7 +697,7 @@ tail -f hx-sync.log
 ### Support Resources
 
 - [HX Documentation](../README.md)
-- [S3 Sync User Guide](../user_guide/s3_sync.md)
+- [S3 Sync User Guide (roadmap)](../roadmap/s3_sync.md)
 - [Configuration Reference](../configuration/reference.md)
 - [GitHub Issues](https://github.com/mrcawood/History_eXtended/issues)
 

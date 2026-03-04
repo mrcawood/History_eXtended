@@ -1,7 +1,11 @@
 # S3 Sync User Guide
 
+> **Design / Roadmap — not supported by current CLI.**  
+> S3Store exists in `internal/sync` and is tested; the CLI currently supports `folder:` store only.  
+> This document describes the planned user experience when S3 is wired into the CLI.
+
 **Phase 2B**: S3-compatible object storage sync for History eXtended  
-**Last Updated**: 2026-03-01
+**Last Updated**: 2026-03-04
 
 ---
 
@@ -12,13 +16,13 @@
 - AWS CLI or S3-compatible storage account
 - Existing hx installation (Phase 1 complete)
 
-### AWS S3 Setup
+### AWS S3 Setup (planned)
 
 ```bash
 # 1. Create S3 bucket
 aws s3 mb s3://your-hx-sync-bucket --region us-west-2
 
-# 2. Initialize hx sync with S3 store
+# 2. Initialize hx sync with S3 store (planned; not yet in CLI)
 hx sync init --store s3://your-hx-sync-bucket/hx-sync?region=us-west-2
 
 # 3. Test connection
@@ -31,7 +35,7 @@ hx sync push
 hx sync pull
 ```
 
-### MinIO Setup (Local/Self-Hosted)
+### MinIO Setup (planned)
 
 ```bash
 # 1. Start MinIO (Docker)
@@ -44,7 +48,7 @@ docker run -d --name hx-minio \
 # 2. Create bucket
 mc mb local/hx-sync
 
-# 3. Initialize hx sync
+# 3. Initialize hx sync (planned; not yet in CLI)
 hx sync init --store s3://hx-sync?endpoint=localhost:9000&path_style=true&access_key=minioadmin&secret_key=minioadmin
 
 # 4. Test and sync
@@ -68,7 +72,7 @@ hx sync push
 | `access_key` | AWS access key | `AKIA...` | ❌ (env/profile) |
 | `secret_key` | AWS secret key | `secret` | ❌ (env/profile) |
 
-### Configuration Methods
+### Configuration Methods (planned)
 
 #### 1. URL Configuration (Recommended)
 ```bash
@@ -103,7 +107,7 @@ hx sync init --store "s3://my-bucket/hx-sync"
 
 ---
 
-## 🔄 Migration from Folder Store
+## 🔄 Migration from Folder Store (planned)
 
 ### Backup Current State
 ```bash
@@ -116,7 +120,7 @@ hx sync status
 
 ### Migration Process
 ```bash
-# 1. Initialize new S3 store
+# 1. Initialize new S3 store (planned)
 hx sync init --store "s3://new-bucket/hx-sync?region=us-west-2"
 
 # 2. Push all history to S3
@@ -359,8 +363,8 @@ hx find "test query" --after "2023-03-01"
 - [MinIO Documentation](https://docs.min.io/)
 - [Wasabi S3 Documentation](https://wasabi-support.zendesk.com/hc/en-us)
 - [HX Architecture Specs](../architecture/)
-- [Troubleshooting Runbooks](../runbooks/)
+- [S3Store spec](../architecture/s3store.md) — implementation exists in `internal/sync`, not yet wired in CLI
 
 ---
 
-*Last updated: 2026-03-01*
+*Last updated: 2026-03-04*
