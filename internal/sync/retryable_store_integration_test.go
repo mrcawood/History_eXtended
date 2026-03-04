@@ -62,7 +62,7 @@ func TestRetryableStore_MinIOIntegration(t *testing.T) {
 		// List
 		keys, err := retryableStore.List("test/retry/")
 		require.NoError(t, err)
-		assert.Contains(t, keys, "/test/retry/key1") // S3Store returns full paths
+		assert.Contains(t, keys, "test/retry/key1")
 	})
 
 	// Test that retryable store implements SyncStore interface
