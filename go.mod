@@ -1,4 +1,4 @@
-module github.com/history-extended/hx
+module github.com/mrcawood/History_eXtended
 
 go 1.24.0
 

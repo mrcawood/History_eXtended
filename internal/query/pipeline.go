@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"strings"
 
-	"github.com/history-extended/hx/internal/config"
-	"github.com/history-extended/hx/internal/ollama"
+	"github.com/mrcawood/History_eXtended/internal/config"
+	"github.com/mrcawood/History_eXtended/internal/ollama"
 )
 
 const candidateLimit = 50

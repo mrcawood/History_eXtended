@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/history-extended/hx/internal/db"
+	"github.com/mrcawood/History_eXtended/internal/db"
 )
 
 func TestRunZsh(t *testing.T) {

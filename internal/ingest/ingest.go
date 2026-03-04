@@ -3,10 +3,10 @@ package ingest
 import (
 	"fmt"
 
-	"github.com/history-extended/hx/internal/config"
-	"github.com/history-extended/hx/internal/filter"
-	"github.com/history-extended/hx/internal/spool"
-	"github.com/history-extended/hx/internal/store"
+	"github.com/mrcawood/History_eXtended/internal/config"
+	"github.com/mrcawood/History_eXtended/internal/filter"
+	"github.com/mrcawood/History_eXtended/internal/spool"
+	"github.com/mrcawood/History_eXtended/internal/store"
 )
 
 // Run reads events from spool, pairs pre+post, inserts into DB.

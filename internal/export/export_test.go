@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/history-extended/hx/internal/artifact"
-	"github.com/history-extended/hx/internal/db"
-	"github.com/history-extended/hx/internal/store"
+	"github.com/mrcawood/History_eXtended/internal/artifact"
+	"github.com/mrcawood/History_eXtended/internal/db"
+	"github.com/mrcawood/History_eXtended/internal/store"
 )
 
 func TestRedact(t *testing.T) {

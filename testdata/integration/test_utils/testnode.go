@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/history-extended/hx/internal/config"
-	"github.com/history-extended/hx/internal/sync"
+	"github.com/mrcawood/History_eXtended/internal/config"
+	"github.com/mrcawood/History_eXtended/internal/sync"
 	_ "github.com/mattn/go-sqlite3"
 )
 

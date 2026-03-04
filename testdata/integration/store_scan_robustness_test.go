@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	hs "github.com/history-extended/hx/internal/sync"
-	"github.com/history-extended/hx/testdata/integration/test_utils"
+	hs "github.com/mrcawood/History_eXtended/internal/sync"
+	"github.com/mrcawood/History_eXtended/testdata/integration/test_utils"
 )
 
 // TestStoreScanRobustness verifies that the store handles junk files and disorder gracefully

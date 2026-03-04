@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/history-extended/hx/internal/config"
+	"github.com/mrcawood/History_eXtended/internal/config"
 )
 
 func spoolDir() string {

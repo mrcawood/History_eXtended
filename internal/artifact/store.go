@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/history-extended/hx/internal/blob"
+	"github.com/mrcawood/History_eXtended/internal/blob"
 )
 
 // Store handles artifact and blob DB operations.

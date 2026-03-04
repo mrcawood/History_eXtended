@@ -7,7 +7,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/history-extended/hx/internal/store"
+	"github.com/mrcawood/History_eXtended/internal/store"
 )
 
 func TestPush_PublishesSegment(t *testing.T) {

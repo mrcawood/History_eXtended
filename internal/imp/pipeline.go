@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/history-extended/hx/internal/history"
-	"github.com/history-extended/hx/internal/store"
+	"github.com/mrcawood/History_eXtended/internal/history"
+	"github.com/mrcawood/History_eXtended/internal/store"
 )
 
 const maxLines = 100_000

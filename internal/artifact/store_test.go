@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/history-extended/hx/internal/db"
-	"github.com/history-extended/hx/internal/store"
+	"github.com/mrcawood/History_eXtended/internal/db"
+	"github.com/mrcawood/History_eXtended/internal/store"
 )
 
 func TestAttachAndQuery(t *testing.T) {

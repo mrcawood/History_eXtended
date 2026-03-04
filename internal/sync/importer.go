@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/history-extended/hx/internal/blob"
-	"github.com/history-extended/hx/internal/store"
+	"github.com/mrcawood/History_eXtended/internal/blob"
+	"github.com/mrcawood/History_eXtended/internal/store"
 )
 
 const syncSessionSep = "|"

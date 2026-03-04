@@ -99,7 +99,7 @@
 **Command**: `go test ./internal/sync/... -race -count=3`  
 **Output Excerpt**:
 ```
-ok      github.com/history-extended/hx/internal/sync    1.054s
+ok      github.com/mrcawood/History_eXtended/internal/sync    1.054s
 ```
 
 **Verification**: No data races detected in core sync components

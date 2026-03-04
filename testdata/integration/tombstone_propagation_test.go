@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	hs "github.com/history-extended/hx/internal/sync"
-	"github.com/history-extended/hx/testdata/integration/test_utils"
+	hs "github.com/mrcawood/History_eXtended/internal/sync"
+	"github.com/mrcawood/History_eXtended/testdata/integration/test_utils"
 )
 
 // TestTombstonePropagation verifies tombstone creation and propagation

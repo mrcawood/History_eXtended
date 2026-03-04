@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/history-extended/hx/internal/config"
+	"github.com/mrcawood/History_eXtended/internal/config"
 	"github.com/klauspost/compress/zstd"
 )
 

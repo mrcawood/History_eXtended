@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/history-extended/hx/internal/config"
+	"github.com/mrcawood/History_eXtended/internal/config"
 )
 
 // ShouldCapture returns false if the command should be skipped (ignored or not allowlisted).

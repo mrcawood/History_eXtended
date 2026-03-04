@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/history-extended/hx/internal/artifact"
+	"github.com/mrcawood/History_eXtended/internal/artifact"
 )
 
 // SessionExport holds session + events + artifacts for export.

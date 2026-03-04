@@ -9,12 +9,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/history-extended/hx/internal/config"
-	"github.com/history-extended/hx/internal/db"
-	"github.com/history-extended/hx/internal/ingest"
-	"github.com/history-extended/hx/internal/retention"
-	"github.com/history-extended/hx/internal/spool"
-	"github.com/history-extended/hx/internal/store"
+	"github.com/mrcawood/History_eXtended/internal/config"
+	"github.com/mrcawood/History_eXtended/internal/db"
+	"github.com/mrcawood/History_eXtended/internal/ingest"
+	"github.com/mrcawood/History_eXtended/internal/retention"
+	"github.com/mrcawood/History_eXtended/internal/spool"
+	"github.com/mrcawood/History_eXtended/internal/store"
 )
 
 func dbPath() string {
