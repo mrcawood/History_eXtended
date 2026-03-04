@@ -164,8 +164,10 @@ func TestConcurrentPullIdempotency(t *testing.T) {
 
 // TestConcurrentManifestSequenceAtomicity tests sequence monotonicity under concurrency
 func TestConcurrentManifestSequenceAtomicity(t *testing.T) {
-	// Use shared in-memory DB so all goroutines see the same database
-	db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
+	// Use shared in-memory DB so all goroutines see the same database.
+	// busy_timeout makes SQLite wait for locks instead of failing immediately,
+	// reducing flakiness when all goroutines contend (e.g. in CI).
+	db, err := sql.Open("sqlite3", "file::memory:?cache=shared&_busy_timeout=5000")
 	require.NoError(t, err)
 	defer func() {
 		if err := db.Close(); err != nil {
