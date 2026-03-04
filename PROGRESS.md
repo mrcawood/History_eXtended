@@ -15,7 +15,7 @@ Implementation (Phase 2B) - Started on feature/phase2b-s3store
 
 # Approval Status
 
-Proceeding with Phase 2B using two-gate approach. Gate A (store correctness) complete. Gate B (sync correctness) in progress.
+Awaiting user approval. (RELEASE_ENGINEER produced Bash ≥5 release checklist; merge not executed.)
 
 # Key Decisions
 
@@ -75,6 +75,7 @@ Proceeding with Phase 2B using two-gate approach. Gate A (store correctness) com
 - [x] Phase 2B Gate B: Corrupt object does not block valid
 - [x] Phase 2B Gate B: Retry/backoff with transient failures
 - [x] Phase 2B Security & Correctness Verification (path traversal, resource limits, concurrency)
+- [x] Bash ≥5: hx-emit "cmd" mode (single-call pre+post+pipe), "post" pipe arg; src/hooks/bash/hx.bash; INSTALL.md; validation appendix
 
 # Open Questions
 
@@ -82,7 +83,7 @@ Proceeding with Phase 2B using two-gate approach. Gate A (store correctness) com
 
 # Technical Context
 
-- **Repo structure:** `cmd/hx/`, `cmd/hx-emit/`, `cmd/hxd/`; `internal/config/`, `internal/db/`, `internal/store/`, `internal/spool/`, `internal/ingest/`, `internal/history/`, `internal/imp/`, `internal/ollama/`, `internal/query/`, `internal/retention/`, `internal/export/`; `migrations/`; `src/hooks/hx.zsh`.
+- **Repo structure:** `cmd/hx/`, `cmd/hx-emit/`, `cmd/hxd/`; `internal/config/`, `internal/db/`, `internal/store/`, `internal/spool/`, `internal/ingest/`, `internal/history/`, `internal/imp/`, `internal/ollama/`, `internal/query/`, `internal/retention/`, `internal/export/`; `migrations/`; `src/hooks/hx.zsh`, `src/hooks/bash/hx.bash`.
 - **Components:** C1–C7 per PRD (hooks, emitter, spool, daemon, SQLite, blob store, query engine).
 - **Commands:** `hx status`, `hx pause`/`resume`, `hx last`, `hx find`, `hx query`, `hx attach`, `hx import` (M7), `hx pin`, `hx forget`, `hx export`, `hx sync init/status/push/pull` (Phase 2A).
 - **Configs:** Retention (12 mo events, 90 d blobs), spool path (e.g. `/tmp/hx/...`), blob store (`$XDG_DATA_HOME/hx/blobs`), ignore/allowlist rules.
@@ -99,6 +100,9 @@ Proceeding with Phase 2B using two-gate approach. Gate A (store correctness) com
 
 # Recent Changes (Today)
 
+- **RELEASE_ENGINEER:** Bash ≥5 release checklist added: docs/release/bash5_release_checklist.md. Definition of done, pre-merge checklist, cutover steps, versioning note, rollback plan, migration (none). Do not execute merge without approval.
+- **DEVELOPER (feature/bash5-support):** Bash ≥5 implementation. hx-emit: added "cmd" mode (SID SEQ CMD_B64 CWD TTY HOST TS_START TS_END EXIT DUR_MS [PIPE]) writing pre+post in one process; "post" mode accepts optional 6th arg PIPE (comma-separated). src/hooks/bash/hx.bash: DEBUG trap + PROMPT_COMMAND composition, version check (Bash ≥5), recursion guard (hx-emit, hx, hxd), pause check, first-prompt skip, EPOCHREALTIME + awk for duration. INSTALL.md: Bash ≥5 section, prerequisites. docs/validation/validation_appendix.md: Bash ≥5 support entry. All tests pass (go test -tags sqlite_fts5 ./...).
+- **VERIFIER:** Bash ≥5 spec verification complete. docs/validation/bash5_spec_verification.md added: acceptance criteria (AC1–AC13), invariants (I1–I6), test plan (T1–T7 + oracles), three spec/code gaps (hx-emit single-call mode, pipe status in hx-emit, first-prompt skip). Recommendation: resolve gaps then DEVELOPER for implementation.
 - **Phase 2A COMPLETE**: 15/15 integration tests passing with race detection. Production importer with defense-in-depth validation. Vault-based encryption model implemented. Atomic publish guarantees enforced.
 - Developer: Phase 2A.4+2A.5. internal/sync: Push() (segment writer), sync_published_events, NewNodeID(). CLI: hx sync init/status/push/pull.
 - Developer: Phase 2A.3. internal/sync: importer (Import), sync metadata migration (sync_vaults, sync_nodes, imported_segments, applied_tombstones). store.InsertSyncEvent, EnsureSyncSession. Segment/blob/tombstone import, idempotency, tombstone application. Tests: segment import, idempotent re-import (skip FTS5 when unavailable).
@@ -144,7 +148,7 @@ Proceeding with Phase 2B using two-gate approach. Gate A (store correctness) com
 - ✅ Retry/backoff with transient failures
 - ✅ Security & correctness verification (path traversal, resource limits, concurrency)
 
-**Next Phase:** Phase 2B COMPLETE - Production-ready S3-compatible sync with manifest-driven incremental pull, network resilience, and comprehensive security controls
+**Next Phase (candidate):** Bash ≥5 ready for merge. Release checklist: docs/release/bash5_release_checklist.md. Complete pre-merge checklist, ensure CI green, then merge per cutover steps. Rollback: revert + remove source line from user .bashrc.
 
 ## Phase 2B — Evidence (Verification & Acceptance)
 
@@ -189,3 +193,9 @@ Minimum contents:
   - go vet ./...
   - staticcheck ./...
   - gosec ./...
+
+## Bash ≥5 support (implemented on feature/bash5-support)
+
+- **Spec:** hx_bash5_support_spec.md
+- **Verification:** docs/validation/bash5_spec_verification.md (VERIFIER)
+- **Implementation:** hx-emit "cmd" + "post" pipe; src/hooks/bash/hx.bash; INSTALL.md; validation appendix. Gaps resolved: single-call mode, pipe in post/cmd, first-prompt skip in hook.

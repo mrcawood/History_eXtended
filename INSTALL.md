@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Go 1.21+
-- zsh
+- **Shells:** zsh (recommended), or bash ≥ 5.0 (supported)
 
 ## Build and test
 
@@ -62,14 +62,29 @@ export PATH="$HOME/.local/bin:$PATH"
 source ~/projects/History_eXtended/src/hooks/hx.zsh
 ```
 
+## Enable capture (Bash ≥ 5)
+
+Supported shells: zsh (recommended), bash ≥ 5.0 (supported). macOS ships Bash 3.2 by default; install a newer Bash (e.g. `brew install bash`) and set it as your login shell or configure your terminal to launch it.
+
+Add to `.bashrc` or `.bash_profile`:
+
+```bash
+# hx terminal capture (Bash 5+)
+source /path/to/History_eXtended/src/hooks/bash/hx.bash
+```
+
+Ensure `hx-emit` is on PATH (e.g. `export PATH="$HOME/.local/bin:$PATH"` before sourcing the hook).
+
+To force the hook to load on Bash < 5 (unsupported, best-effort only), set `HX_BASH_ALLOW_UNSUPPORTED=1` before sourcing.
+
 ## Verify
 
-1. Open a new zsh shell (or `source ~/.zshrc`).
+1. Open a new shell (zsh or Bash 5+: `source ~/.zshrc` or `source ~/.bashrc`).
 2. Run a few commands: `echo hi`, `pwd`, `false`.
 3. Check status: `hx status`
 4. Inspect spool: `tail ~/.local/share/hx/spool/events.jsonl` or `hx dump` (queries DB, no sqlite3 needed)
 
-You should see `pre` and `post` events for each command.
+You should see `pre` and `post` events for each command (zsh emits pre+post separately; Bash hook emits both in one `cmd` call).
 
 ## Pause / Resume
 
