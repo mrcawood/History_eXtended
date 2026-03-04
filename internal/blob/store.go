@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mrcawood/History_eXtended/internal/config"
 	"github.com/klauspost/compress/zstd"
+	"github.com/mrcawood/History_eXtended/internal/config"
 )
 
 // BlobDir returns the blob store directory (from config, env, or default).

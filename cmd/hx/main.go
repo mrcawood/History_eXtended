@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/mrcawood/History_eXtended/internal/artifact"
 	"github.com/mrcawood/History_eXtended/internal/blob"
 	"github.com/mrcawood/History_eXtended/internal/config"
@@ -25,7 +26,6 @@ import (
 	"github.com/mrcawood/History_eXtended/internal/retention"
 	"github.com/mrcawood/History_eXtended/internal/store"
 	"github.com/mrcawood/History_eXtended/internal/sync"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 func getConfig() *config.Config {
