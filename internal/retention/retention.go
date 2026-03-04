@@ -15,42 +15,42 @@ func PruneEvents(conn *sql.DB, cfg *config.Config) (int64, error) {
 	if cfg == nil || cfg.RetentionEventsMonths <= 0 {
 		return 0, nil
 	}
-	cutoff := time.Now().AddDate(0, -cfg.RetentionEventsMonths, 0).Unix()
-	cutoffSec := float64(cutoff)
+	cutoffSec := float64(time.Now().AddDate(0, -cfg.RetentionEventsMonths, 0).Unix())
+	eventIDs, err := collectEventIDsForPrune(conn, cutoffSec)
+	if err != nil || len(eventIDs) == 0 {
+		return 0, err
+	}
+	return deleteEventsBatch(conn, eventIDs)
+}
 
-	// Get event_ids to delete (old events in non-pinned sessions)
+func collectEventIDsForPrune(conn *sql.DB, cutoffSec float64) ([]int64, error) {
 	rows, err := conn.Query(`
 		SELECT e.event_id FROM events e
 		JOIN sessions s ON s.session_id = e.session_id
 		WHERE e.started_at < ? AND s.pinned = 0
 	`, cutoffSec)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	var eventIDs []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
 			_ = rows.Close()
-			return 0, err
+			return nil, err
 		}
 		eventIDs = append(eventIDs, id)
 	}
 	_ = rows.Close()
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-	if len(eventIDs) == 0 {
-		return 0, nil
-	}
+	return eventIDs, rows.Err()
+}
 
+func deleteEventsBatch(conn *sql.DB, eventIDs []int64) (int64, error) {
 	tx, err := conn.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-
-	// Delete from events_fts (rowid = event_id). Batch to avoid SQLITE_MAX_VARIABLE_NUMBER.
 	const batch = 500
 	for i := 0; i < len(eventIDs); i += batch {
 		end := i + batch
@@ -64,13 +64,10 @@ func PruneEvents(conn *sql.DB, cfg *config.Config) (int64, error) {
 			placeholders[j] = "?"
 			args[j] = id
 		}
-		_, err := tx.Exec(`DELETE FROM events_fts WHERE rowid IN (`+joinPlaceholders(placeholders)+`)`, args...)
-		if err != nil {
+		if _, err := tx.Exec(`DELETE FROM events_fts WHERE rowid IN (`+joinPlaceholders(placeholders)+`)`, args...); err != nil {
 			return 0, err
 		}
 	}
-
-	// Delete from events (batched)
 	var total int64
 	for i := 0; i < len(eventIDs); i += batch {
 		end := i + batch
@@ -111,53 +108,58 @@ func PruneBlobs(conn *sql.DB, blobDir string, cfg *config.Config) (int64, error)
 	if cfg == nil || cfg.RetentionBlobsDays <= 0 {
 		return 0, nil
 	}
-	cutoff := time.Now().AddDate(0, 0, -cfg.RetentionBlobsDays).Unix()
-	cutoffSec := float64(cutoff)
-
-	// Delete artifacts that are old and linked to non-pinned (or unlinked) sessions
-	_, err := conn.Exec(`
+	cutoffSec := float64(time.Now().AddDate(0, 0, -cfg.RetentionBlobsDays).Unix())
+	if _, err := conn.Exec(`
 		DELETE FROM artifacts WHERE created_at < ? AND (
 			linked_session_id IS NULL
 			OR linked_session_id NOT IN (SELECT session_id FROM sessions WHERE pinned = 1)
-		)`, cutoffSec)
+		)`, cutoffSec); err != nil {
+		return 0, err
+	}
+	toDelete, err := findOrphanBlobs(conn, cutoffSec)
 	if err != nil {
 		return 0, err
 	}
+	resolveBlobPaths(toDelete, blobDir)
+	deleted, err := deleteOrphanBlobs(conn, toDelete)
+	if err != nil {
+		return deleted, err
+	}
+	if cfg.BlobDiskCapGB > 0 {
+		deleted += enforceBlobDiskCap(conn, blobDir, cfg.BlobDiskCapGB)
+	}
+	return deleted, nil
+}
 
-	// Find blob sha256s that are no longer referenced by any artifact
+func findOrphanBlobs(conn *sql.DB, cutoffSec float64) ([]struct{ sha256, path string }, error) {
 	rows, err := conn.Query(`
 		SELECT b.sha256, b.storage_path FROM blobs b
-		WHERE b.created_at < ?
-		AND b.sha256 NOT IN (SELECT sha256 FROM artifacts)
+		WHERE b.created_at < ? AND b.sha256 NOT IN (SELECT sha256 FROM artifacts)
 	`, cutoffSec)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var toDelete []struct {
-		sha256 string
-		path   string
-	}
+	var toDelete []struct{ sha256, path string }
 	for rows.Next() {
 		var s, p string
 		if err := rows.Scan(&s, &p); err != nil {
-			return 0, err
+			return nil, err
 		}
-		toDelete = append(toDelete, struct {
-			sha256 string
-			path   string
-		}{s, p})
+		toDelete = append(toDelete, struct{ sha256, path string }{s, p})
 	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
+	return toDelete, rows.Err()
+}
 
+func resolveBlobPaths(toDelete []struct{ sha256, path string }, blobDir string) {
 	for i := range toDelete {
 		if !filepath.IsAbs(toDelete[i].path) && blobDir != "" {
 			toDelete[i].path = filepath.Join(blobDir, toDelete[i].path)
 		}
 	}
+}
 
+func deleteOrphanBlobs(conn *sql.DB, toDelete []struct{ sha256, path string }) (int64, error) {
 	var deleted int64
 	for _, b := range toDelete {
 		_ = os.Remove(b.path)
@@ -168,41 +170,38 @@ func PruneBlobs(conn *sql.DB, blobDir string, cfg *config.Config) (int64, error)
 		n, _ := res.RowsAffected()
 		deleted += n
 	}
-
-	// Enforce blob_disk_cap_gb: delete oldest blobs until under cap
-	if cfg.BlobDiskCapGB > 0 {
-		capBytes := int64(cfg.BlobDiskCapGB * 1e9)
-		for {
-			var total int64
-			err := conn.QueryRow(`SELECT COALESCE(SUM(byte_len), 0) FROM blobs`).Scan(&total)
-			if err != nil || total <= capBytes {
-				break
-			}
-			// Find oldest blob not referenced by artifacts linked to pinned sessions
-			var sha, path string
-			var byteLen int64
-			err = conn.QueryRow(`
-				SELECT b.sha256, b.storage_path, b.byte_len FROM blobs b
-				WHERE b.sha256 NOT IN (
-					SELECT a.sha256 FROM artifacts a
-					JOIN sessions s ON s.session_id = a.linked_session_id
-					WHERE s.pinned = 1
-				)
-				ORDER BY b.created_at ASC LIMIT 1
-			`).Scan(&sha, &path, &byteLen)
-			if err != nil {
-				break
-			}
-			if !filepath.IsAbs(path) && blobDir != "" {
-				path = filepath.Join(blobDir, path)
-			}
-			_ = os.Remove(path)
-			_, _ = conn.Exec(`DELETE FROM artifacts WHERE sha256 = ?`, sha)
-			_, _ = conn.Exec(`DELETE FROM blobs WHERE sha256 = ?`, sha)
-			deleted++
-		}
-	}
 	return deleted, nil
+}
+
+func enforceBlobDiskCap(conn *sql.DB, blobDir string, capGB float64) int64 {
+	capBytes := int64(capGB * 1e9)
+	var deleted int64
+	for {
+		var total int64
+		if err := conn.QueryRow(`SELECT COALESCE(SUM(byte_len), 0) FROM blobs`).Scan(&total); err != nil || total <= capBytes {
+			break
+		}
+		var sha, path string
+		if err := conn.QueryRow(`
+			SELECT b.sha256, b.storage_path FROM blobs b
+			WHERE b.sha256 NOT IN (
+				SELECT a.sha256 FROM artifacts a
+				JOIN sessions s ON s.session_id = a.linked_session_id
+				WHERE s.pinned = 1
+			)
+			ORDER BY b.created_at ASC LIMIT 1
+		`).Scan(&sha, &path); err != nil {
+			break
+		}
+		if !filepath.IsAbs(path) && blobDir != "" {
+			path = filepath.Join(blobDir, path)
+		}
+		_ = os.Remove(path)
+		_, _ = conn.Exec(`DELETE FROM artifacts WHERE sha256 = ?`, sha)
+		_, _ = conn.Exec(`DELETE FROM blobs WHERE sha256 = ?`, sha)
+		deleted++
+	}
+	return deleted
 }
 
 // ForgetSince deletes events in the time window [now-d since, now]. Respects pinned sessions.

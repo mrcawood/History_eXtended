@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mrcawood/History_eXtended/internal/config"
@@ -89,6 +90,27 @@ func appendEvent(line string) error {
 	return err
 }
 
+// parsePipe parses comma-separated integers (e.g. "1,0" or "" -> []int{}).
+func parsePipe(s string) []int {
+	if s == "" {
+		return []int{}
+	}
+	parts := strings.Split(s, ",")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
 func main() {
 	if isPaused() {
 		os.Exit(0)
@@ -126,13 +148,18 @@ func main() {
 			os.Exit(1)
 		}
 	case "post":
-		// post SID SEQ EXIT DUR_MS
+		// post SID SEQ EXIT DUR_MS [PIPE]
+		// PIPE optional: comma-separated ints e.g. "1,0"
 		if len(os.Args) < 6 {
 			os.Exit(1)
 		}
 		seq, _ := strconv.Atoi(os.Args[3])
 		exit, _ := strconv.Atoi(os.Args[4])
 		dur, _ := strconv.ParseInt(os.Args[5], 10, 64)
+		pipe := []int{}
+		if len(os.Args) >= 7 && os.Args[6] != "" {
+			pipe = parsePipe(os.Args[6])
+		}
 		ev := postEvent{
 			T:     "post",
 			Ts:    ts,
@@ -140,10 +167,58 @@ func main() {
 			Seq:   seq,
 			Exit:  exit,
 			DurMs: dur,
-			Pipe:  []int{},
+			Pipe:  pipe,
 		}
 		b, _ := json.Marshal(ev)
 		if err := appendEvent(string(b)); err != nil {
+			os.Exit(1)
+		}
+	case "cmd":
+		// cmd SID SEQ CMD_B64 CWD TTY HOST TS_START TS_END EXIT DUR_MS [PIPE]
+		// Single-call mode for Bash hook: writes pre then post in one process.
+		// PIPE optional: comma-separated ints e.g. "1,0"
+		if len(os.Args) < 12 {
+			os.Exit(1)
+		}
+		cmdB64 := os.Args[4]
+		cmd, err := base64.StdEncoding.DecodeString(cmdB64)
+		if err != nil {
+			cmd = []byte(cmdB64)
+		}
+		seq, _ := strconv.Atoi(os.Args[3])
+		tsStart, _ := strconv.ParseFloat(os.Args[8], 64)
+		tsEnd, _ := strconv.ParseFloat(os.Args[9], 64)
+		exit, _ := strconv.Atoi(os.Args[10])
+		dur, _ := strconv.ParseInt(os.Args[11], 10, 64)
+		pipe := []int{}
+		if len(os.Args) >= 13 && os.Args[12] != "" {
+			pipe = parsePipe(os.Args[12])
+		}
+		preEv := preEvent{
+			T:    "pre",
+			Ts:   tsStart,
+			Sid:  os.Args[2],
+			Seq:  seq,
+			Cmd:  string(cmd),
+			Cwd:  os.Args[5],
+			Tty:  os.Args[6],
+			Host: os.Args[7],
+		}
+		postEv := postEvent{
+			T:     "post",
+			Ts:    tsEnd,
+			Sid:   os.Args[2],
+			Seq:   seq,
+			Exit:  exit,
+			DurMs: dur,
+			Pipe:  pipe,
+		}
+		bPre, _ := json.Marshal(preEv)
+		bPost, _ := json.Marshal(postEv)
+		if err := appendEvent(string(bPre)); err != nil {
+			os.Exit(1)
+		}
+		if err := appendEvent(string(bPost)); err != nil {
 			os.Exit(1)
 		}
 	default:

@@ -161,20 +161,41 @@ func cmdLast() {
 		os.Exit(1)
 	}
 	defer func() { _ = conn.Close() }()
+	sessionID, host, startedAt, events, err := fetchLastSession(conn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "hx last: %v\n", err)
+		os.Exit(1)
+	}
+	if sessionID == "" {
+		fmt.Fprintf(os.Stderr, "hx last: no events found\n")
+		os.Exit(0)
+	}
+	fmt.Printf("Session: %s\n", sessionID)
+	fmt.Printf("Host:    %s\n", host)
+	fmt.Printf("Started: %.0f\n", startedAt)
+	fmt.Printf("Events:  %d\n\n", len(events))
+	showSeq := collectShowSeqs(events)
+	printLastEvents(events, showSeq)
+}
 
-	// Last session = session of most recent event
+type lastEvent struct {
+	seq  int
+	exit *int
+	cwd  string
+	cmd  string
+}
+
+func fetchLastSession(conn *sql.DB) (string, string, float64, []lastEvent, error) {
 	var sessionID string
-	err = conn.QueryRow(`
+	err := conn.QueryRow(`
 		SELECT session_id FROM events ORDER BY COALESCE(ended_at, started_at) DESC LIMIT 1
 	`).Scan(&sessionID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "hx last: no events found\n")
-		os.Exit(0)
+		return "", "", 0, nil, nil
 	}
 	var host string
 	var startedAt float64
 	_ = conn.QueryRow(`SELECT host, started_at FROM sessions WHERE session_id = ?`, sessionID).Scan(&host, &startedAt)
-
 	rows, err := conn.Query(`
 		SELECT e.seq, e.exit_code, e.cwd, COALESCE(c.cmd_text, '')
 		FROM events e
@@ -183,32 +204,21 @@ func cmdLast() {
 		ORDER BY e.seq
 	`, sessionID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "hx last: %v\n", err)
-		os.Exit(1)
+		return "", "", 0, nil, err
 	}
 	defer func() { _ = rows.Close() }()
-
-	type evt struct {
-		seq  int
-		exit *int
-		cwd  string
-		cmd  string
-	}
-	var events []evt
+	var events []lastEvent
 	for rows.Next() {
-		var e evt
+		var e lastEvent
 		if err := rows.Scan(&e.seq, &e.exit, &e.cwd, &e.cmd); err != nil {
 			continue
 		}
 		events = append(events, e)
 	}
+	return sessionID, host, startedAt, events, nil
+}
 
-	fmt.Printf("Session: %s\n", sessionID)
-	fmt.Printf("Host:    %s\n", host)
-	fmt.Printf("Started: %.0f\n", startedAt)
-	fmt.Printf("Events:  %d\n\n", len(events))
-
-	// Context window for failures: show 1 before, 1 after
+func collectShowSeqs(events []lastEvent) map[int]bool {
 	showSeq := make(map[int]bool)
 	for i, e := range events {
 		if e.exit != nil && *e.exit != 0 {
@@ -221,13 +231,15 @@ func cmdLast() {
 			}
 		}
 	}
-	// If no failures, show all
 	if len(showSeq) == 0 {
 		for _, e := range events {
 			showSeq[e.seq] = true
 		}
 	}
+	return showSeq
+}
 
+func printLastEvents(events []lastEvent, showSeq map[int]bool) {
 	for _, e := range events {
 		if !showSeq[e.seq] {
 			continue
@@ -866,11 +878,19 @@ func cmdSyncPull() {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("hx: History eXtended - terminal flight recorder")
-		fmt.Println("Usage: hx <status|pause|resume|last|dump|find|attach|query|import|pin|forget|export|sync> [args...]")
+		printUsage()
 		os.Exit(0)
 	}
-	switch os.Args[1] {
+	runCommand(os.Args[1], os.Args[2:])
+}
+
+func printUsage() {
+	fmt.Println("hx: History eXtended - terminal flight recorder")
+	fmt.Println("Usage: hx <status|pause|resume|last|dump|find|attach|query|import|pin|forget|export|sync> [args...]")
+}
+
+func runCommand(cmd string, args []string) {
+	switch cmd {
 	case "status":
 		cmdStatus()
 	case "pause":
@@ -882,27 +902,27 @@ func main() {
 	case "dump":
 		cmdDump()
 	case "find":
-		if len(os.Args) < 3 {
+		if len(args) < 1 {
 			fmt.Fprintf(os.Stderr, "hx find: usage: hx find <text>\n")
 			os.Exit(1)
 		}
-		cmdFind(strings.Join(os.Args[2:], " "))
+		cmdFind(strings.Join(args, " "))
 	case "attach":
-		cmdAttach(os.Args[2:])
+		cmdAttach(args)
 	case "query":
-		cmdQuery(os.Args[2:])
+		cmdQuery(args)
 	case "import":
-		cmdImport(os.Args[2:])
+		cmdImport(args)
 	case "pin":
-		cmdPin(os.Args[2:])
+		cmdPin(args)
 	case "forget":
-		cmdForget(os.Args[2:])
+		cmdForget(args)
 	case "export":
-		cmdExport(os.Args[2:])
+		cmdExport(args)
 	case "sync":
-		cmdSync(os.Args[2:])
+		cmdSync(args)
 	default:
-		fmt.Fprintf(os.Stderr, "hx: unknown command %q\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "hx: unknown command %q\n", cmd)
 		os.Exit(1)
 	}
 }

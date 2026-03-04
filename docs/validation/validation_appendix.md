@@ -113,6 +113,16 @@ M7 (history import) is included in PRD §15 (Phase 1 milestones). The PRD was up
 
 ---
 
+## Bash ≥ 5 support
+
+- **Spec:** `hx_bash5_support_spec.md` (implementation-ready).
+- **Verification:** `docs/validation/bash5_spec_verification.md` (VERIFIER: acceptance criteria, invariants, test plan, spec/code gaps).
+- **Implementation:** `src/hooks/bash/hx.bash` (DEBUG trap + PROMPT_COMMAND composition), `hx-emit cmd` mode (single-call pre+post+pipe), INSTALL.md Bash section.
+- **Policy:** Bash ≥ 5.0 required; set `HX_BASH_ALLOW_UNSUPPORTED=1` to load on older Bash (unsupported).
+- **Acceptance:** Manual or harness tests per verification doc T1–T7 (exit code, pipe status, duration, pause, PROMPT_COMMAND, no recursion, flake run).
+
+---
+
 ## Operational Truths (pre-Phase 2)
 
 | Topic               | Status | Notes |

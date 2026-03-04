@@ -11,155 +11,124 @@ import (
 
 // TestTombstonePropagation verifies tombstone creation and propagation
 func TestTombstonePropagation(t *testing.T) {
-	// Create two test nodes in the same vault
 	nodeA := test_utils.NewNodeInVault(t, "main", "nodeA")
 	defer nodeA.Cleanup()
-
-	nodeB := test_utils.NewNodeInVault(t, "main", "nodeB") // Same vault as nodeA
+	nodeB := test_utils.NewNodeInVault(t, "main", "nodeB")
 	defer nodeB.Cleanup()
 
-	// Create initial events on node A
-	events := []hs.SegmentEvent{
-		{
-			NodeID:    "nodeA",
-			SessionID: "session1",
-			Seq:       1,
-			StartedAt: float64(time.Now().UTC().Add(-2 * time.Hour).Unix()),
-			EndedAt:   float64(time.Now().UTC().Add(-2 * time.Hour).Add(10 * time.Second).Unix()),
-			Cmd:       "ls -la",
-			ExitCode:  0,
-			Cwd:       "/home/user",
-		},
-		{
-			NodeID:    "nodeA",
-			SessionID: "session1",
-			Seq:       2,
-			StartedAt: float64(time.Now().UTC().Add(-1 * time.Hour).Unix()),
-			EndedAt:   float64(time.Now().UTC().Add(-1 * time.Hour).Add(5 * time.Second).Unix()),
-			Cmd:       "cd /tmp",
-			ExitCode:  0,
-			Cwd:       "/home/user",
-		},
+	events := tombstonePropagationTestEvents()
+	keyA := syncSegmentToNodeB(t, nodeA, nodeB, events)
+	verifyNodeBEvents(t, nodeB, keyA, 2)
+	tombstoneKey := createAndSyncTombstone(t, nodeA, nodeB)
+	headerB, retrievedTombstone := decodeTombstoneOnNodeB(t, nodeB, tombstoneKey)
+	verifyTombstoneHeader(t, headerB)
+	verifyTombstoneEventFiltering(t, retrievedTombstone.StartTs)
+}
+
+func tombstonePropagationTestEvents() []hs.SegmentEvent {
+	now := time.Now().UTC()
+	return []hs.SegmentEvent{
+		{NodeID: "nodeA", SessionID: "session1", Seq: 1,
+			StartedAt: float64(now.Add(-2 * time.Hour).Unix()),
+			EndedAt:  float64(now.Add(-2*time.Hour).Add(10 * time.Second).Unix()),
+			Cmd: "ls -la", ExitCode: 0, Cwd: "/home/user"},
+		{NodeID: "nodeA", SessionID: "session1", Seq: 2,
+			StartedAt: float64(now.Add(-1 * time.Hour).Unix()),
+			EndedAt:   float64(now.Add(-1*time.Hour).Add(5 * time.Second).Unix()),
+			Cmd: "cd /tmp", ExitCode: 0, Cwd: "/home/user"},
 	}
+}
 
-	// Create and publish segment on node A
+func syncSegmentToNodeB(t *testing.T, nodeA, nodeB *test_utils.TestNode, events []hs.SegmentEvent) string {
 	headerA, payloadA := nodeA.CreateTestSegment(events)
-
 	keyA, err := nodeA.PublishSegment(headerA, payloadA)
 	if err != nil {
 		t.Fatalf("Failed to publish segment from node A: %v", err)
 	}
-
-	// Sync to node B
 	dataA, err := nodeA.Store.Get(keyA)
 	if err != nil {
 		t.Fatalf("Failed to retrieve segment from node A: %v", err)
 	}
-
-	err = nodeB.Store.PutAtomic(keyA, dataA)
-	if err != nil {
+	if err := nodeB.Store.PutAtomic(keyA, dataA); err != nil {
 		t.Fatalf("Failed to store segment on node B: %v", err)
 	}
+	return keyA
+}
 
-	// Verify node B has the events
+func verifyNodeBEvents(t *testing.T, nodeB *test_utils.TestNode, keyA string, want int) {
 	_, payloadB, err := nodeB.RetrieveSegment(keyA)
 	if err != nil {
 		t.Fatalf("Failed to retrieve segment from node B: %v", err)
 	}
-
-	if len(payloadB.Events) != 2 {
-		t.Errorf("Node B should have 2 events, got %d", len(payloadB.Events))
+	if len(payloadB.Events) != want {
+		t.Errorf("Node B should have %d events, got %d", want, len(payloadB.Events))
 	}
+}
 
-	// Create tombstone on node A (simulate "hx forget --since 1h")
+func createAndSyncTombstone(t *testing.T, nodeA, nodeB *test_utils.TestNode) string {
 	tombstoneHeader := &hs.Header{
-		Magic:       hs.Magic,
-		Version:     hs.Version,
-		ObjectType:  hs.TypeTomb,
-		VaultID:     "test-vault",
-		CreatedAt:   time.Now().UTC(),
-		TombstoneID: "tombstone-1",
+		Magic: hs.Magic, Version: hs.Version, ObjectType: hs.TypeTomb,
+		VaultID: "test-vault", CreatedAt: time.Now().UTC(), TombstoneID: "tombstone-1",
 	}
-
 	tombstonePayload := &hs.TombstonePayload{
-		NodeID:  nodeA.Dir,                                               // Use directory as node ID
-		StartTs: float64(time.Now().UTC().Add(-90 * time.Minute).Unix()), // Delete events from 1.5 hours ago
-		EndTs:   float64(time.Now().UTC().Unix()),
-		Reason:  "test forget",
+		NodeID: nodeA.Dir, StartTs: float64(time.Now().UTC().Add(-90 * time.Minute).Unix()),
+		EndTs: float64(time.Now().UTC().Unix()), Reason: "test forget",
 	}
-
-	// Publish tombstone
 	tombstoneData, err := hs.EncodeTombstone(tombstoneHeader, tombstonePayload, nodeA.VaultKey, true)
 	if err != nil {
 		t.Fatalf("Failed to encode tombstone: %v", err)
 	}
-
 	tombstoneKey := tombstoneHeader.TombstoneID + ".hxtomb"
-	err = nodeA.Store.PutAtomic(tombstoneKey, tombstoneData)
-	if err != nil {
+	if err := nodeA.Store.PutAtomic(tombstoneKey, tombstoneData); err != nil {
 		t.Fatalf("Failed to publish tombstone: %v", err)
 	}
-
-	// Sync tombstone to node B
-	tombstoneDataFromA, err := nodeA.Store.Get(tombstoneKey)
+	dataFromA, err := nodeA.Store.Get(tombstoneKey)
 	if err != nil {
 		t.Fatalf("Failed to retrieve tombstone from node A: %v", err)
 	}
-
-	err = nodeB.Store.PutAtomic(tombstoneKey, tombstoneDataFromA)
-	if err != nil {
+	if err := nodeB.Store.PutAtomic(tombstoneKey, dataFromA); err != nil {
 		t.Fatalf("Failed to store tombstone on node B: %v", err)
 	}
+	return tombstoneKey
+}
 
-	// Retrieve and decode tombstone on node B
-	tombstoneDataFromB, err := nodeB.Store.Get(tombstoneKey)
+func decodeTombstoneOnNodeB(t *testing.T, nodeB *test_utils.TestNode, tombstoneKey string) (*hs.Header, hs.TombstonePayload) {
+	data, err := nodeB.Store.Get(tombstoneKey)
 	if err != nil {
 		t.Fatalf("Failed to retrieve tombstone from node B: %v", err)
 	}
-
-	tombstoneHeaderB, tombstoneBody, err := hs.DecodeObject(tombstoneDataFromB)
+	header, body, err := hs.DecodeObject(data)
 	if err != nil {
 		t.Fatalf("Failed to decode tombstone on node B: %v", err)
 	}
-
-	// Decrypt payload
-	tombstonePlaintext, err := hs.DecryptObject(tombstoneHeaderB, tombstoneBody, nodeB.VaultKey)
+	plaintext, err := hs.DecryptObject(header, body, nodeB.VaultKey)
 	if err != nil {
 		t.Fatalf("Failed to decrypt tombstone on node B: %v", err)
 	}
-
-	// Unmarshal payload
-	var retrievedTombstone hs.TombstonePayload
-	if err := json.Unmarshal(tombstonePlaintext, &retrievedTombstone); err != nil {
+	var payload hs.TombstonePayload
+	if err := json.Unmarshal(plaintext, &payload); err != nil {
 		t.Fatalf("Failed to unmarshal tombstone payload: %v", err)
 	}
+	return header, payload
+}
 
-	// Verify tombstone properties
-	if tombstoneHeaderB.TombstoneID != "tombstone-1" {
-		t.Errorf("TombstoneID mismatch: expected tombstone-1, got %s", tombstoneHeaderB.TombstoneID)
+func verifyTombstoneHeader(t *testing.T, h *hs.Header) {
+	if h.TombstoneID != "tombstone-1" {
+		t.Errorf("TombstoneID mismatch: expected tombstone-1, got %s", h.TombstoneID)
 	}
-
-	if tombstoneHeaderB.ObjectType != hs.TypeTomb {
-		t.Errorf("Object type mismatch: expected %s, got %s", hs.TypeTomb, tombstoneHeaderB.ObjectType)
+	if h.ObjectType != hs.TypeTomb {
+		t.Errorf("Object type mismatch: expected %s, got %s", hs.TypeTomb, h.ObjectType)
 	}
+}
 
-	// Verify tombstone would delete the right events
-	// event1 (2 hours ago) should be deleted
-	// event2 (1 hour ago) should be kept (since tombstone is for 1.5 hours ago)
+func verifyTombstoneEventFiltering(t *testing.T, tombstoneSince float64) {
 	event1Time := float64(time.Now().UTC().Add(-2 * time.Hour).Unix())
 	event2Time := float64(time.Now().UTC().Add(-1 * time.Hour).Unix())
-	tombstoneSince := retrievedTombstone.StartTs
-
-	if event1Time < tombstoneSince {
-		t.Log("event1 would be correctly deleted by tombstone")
-	} else {
+	if event1Time >= tombstoneSince {
 		t.Error("event1 should be deleted by tombstone but wasn't")
 	}
-
 	if event2Time < tombstoneSince {
 		t.Error("event2 should be kept by tombstone but would be deleted")
-	} else {
-		t.Log("event2 would be correctly kept by tombstone")
 	}
 }
 
