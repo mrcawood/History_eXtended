@@ -47,7 +47,7 @@ type rawConfig struct {
 func Load() (*Config, error) {
 	dataHome := xdgDataHome()
 	configHome := xdgConfigHome()
-	path := filepath.Join(configHome, "hx", "config.yaml")
+	configPath := filepath.Join(configHome, "hx", "config.yaml")
 
 	c := &Config{
 		SpoolDir:              filepath.Join(dataHome, "hx", "spool"),
@@ -62,52 +62,59 @@ func Load() (*Config, error) {
 		OllamaChatModel:       "llama3.2",
 	}
 
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(configPath)
 	if err == nil {
 		var raw rawConfig
 		if err := yaml.Unmarshal(b, &raw); err != nil {
 			return nil, err
 		}
-		if raw.SpoolDir != "" {
-			c.SpoolDir = resolvePath(raw.SpoolDir, dataHome)
-		}
-		if raw.BlobDir != "" {
-			c.BlobDir = resolvePath(raw.BlobDir, dataHome)
-		}
-		if raw.DbPath != "" {
-			c.DbPath = resolvePath(raw.DbPath, dataHome)
-		}
-		if raw.RetentionEventsMonths > 0 {
-			c.RetentionEventsMonths = raw.RetentionEventsMonths
-		}
-		if raw.RetentionBlobsDays > 0 {
-			c.RetentionBlobsDays = raw.RetentionBlobsDays
-		}
-		if raw.BlobDiskCapGB > 0 {
-			c.BlobDiskCapGB = raw.BlobDiskCapGB
-		}
-		c.AllowlistMode = raw.AllowlistMode
-		if len(raw.AllowlistBins) > 0 {
-			c.AllowlistBins = raw.AllowlistBins
-		}
-		if len(raw.IgnorePatterns) > 0 {
-			c.IgnorePatterns = raw.IgnorePatterns
-		}
-		if raw.OllamaEnabled != nil {
-			c.OllamaEnabled = *raw.OllamaEnabled
-		}
-		if raw.OllamaBaseURL != "" {
-			c.OllamaBaseURL = raw.OllamaBaseURL
-		}
-		if raw.OllamaEmbedModel != "" {
-			c.OllamaEmbedModel = raw.OllamaEmbedModel
-		}
-		if raw.OllamaChatModel != "" {
-			c.OllamaChatModel = raw.OllamaChatModel
-		}
+		applyRawConfig(c, &raw, dataHome)
 	}
+	applyEnvOverrides(c)
+	return c, nil
+}
 
-	// Env overrides
+func applyRawConfig(c *Config, raw *rawConfig, dataHome string) {
+	if raw.SpoolDir != "" {
+		c.SpoolDir = resolvePath(raw.SpoolDir, dataHome)
+	}
+	if raw.BlobDir != "" {
+		c.BlobDir = resolvePath(raw.BlobDir, dataHome)
+	}
+	if raw.DbPath != "" {
+		c.DbPath = resolvePath(raw.DbPath, dataHome)
+	}
+	if raw.RetentionEventsMonths > 0 {
+		c.RetentionEventsMonths = raw.RetentionEventsMonths
+	}
+	if raw.RetentionBlobsDays > 0 {
+		c.RetentionBlobsDays = raw.RetentionBlobsDays
+	}
+	if raw.BlobDiskCapGB > 0 {
+		c.BlobDiskCapGB = raw.BlobDiskCapGB
+	}
+	c.AllowlistMode = raw.AllowlistMode
+	if len(raw.AllowlistBins) > 0 {
+		c.AllowlistBins = raw.AllowlistBins
+	}
+	if len(raw.IgnorePatterns) > 0 {
+		c.IgnorePatterns = raw.IgnorePatterns
+	}
+	if raw.OllamaEnabled != nil {
+		c.OllamaEnabled = *raw.OllamaEnabled
+	}
+	if raw.OllamaBaseURL != "" {
+		c.OllamaBaseURL = raw.OllamaBaseURL
+	}
+	if raw.OllamaEmbedModel != "" {
+		c.OllamaEmbedModel = raw.OllamaEmbedModel
+	}
+	if raw.OllamaChatModel != "" {
+		c.OllamaChatModel = raw.OllamaChatModel
+	}
+}
+
+func applyEnvOverrides(c *Config) {
 	if v := os.Getenv("HX_SPOOL_DIR"); v != "" {
 		c.SpoolDir = v
 	}
@@ -117,8 +124,6 @@ func Load() (*Config, error) {
 	if v := os.Getenv("HX_DB_PATH"); v != "" {
 		c.DbPath = v
 	}
-
-	return c, nil
 }
 
 func xdgDataHome() string {

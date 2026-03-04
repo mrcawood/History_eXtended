@@ -113,19 +113,9 @@ func importSegment(conn *sql.DB, st *store.Store, syncStore SyncStore, key strin
 	if h.ObjectType != TypeSeg {
 		return nil
 	}
-
-	// Vault binding validation
-	if h.VaultID != vaultID {
-		res.SegmentsInvalid++
-		return fmt.Errorf("object vault_id %s does not match local vault %s", h.VaultID, vaultID)
+	if err := validateSegmentHeader(h, vaultID, res); err != nil {
+		return err
 	}
-
-	// Node ID and Segment ID sanity checks
-	if h.NodeID == "" || h.SegmentID == "" {
-		res.SegmentsInvalid++
-		return fmt.Errorf("invalid node_id or segment_id in header")
-	}
-
 	plain, err := maybeDecrypt(h, body, K_master)
 	if err != nil {
 		res.SegmentsUnauth++
@@ -136,26 +126,54 @@ func importSegment(conn *sql.DB, st *store.Store, syncStore SyncStore, key strin
 		res.SegmentsInvalid++
 		return err
 	}
-
-	// Skip if already imported
-	segHash := segmentHash(raw)
-	var exists int
-	err = conn.QueryRow(
-		`SELECT 1 FROM imported_segments WHERE vault_id=? AND node_id=? AND segment_id=?`,
-		vaultID, h.NodeID, h.SegmentID,
-	).Scan(&exists)
-	if err == nil {
-		res.SegmentsSkipped++
+	if segmentAlreadyImported(conn, vaultID, h.NodeID, h.SegmentID, res) {
 		return nil
 	}
-
-	// Check tombstones before insert
 	tombstones, err := loadAppliedTombstones(conn, vaultID)
 	if err != nil {
 		return err
 	}
+	if err := insertSegmentData(st, conn, h, &payload, tombstones); err != nil {
+		return err
+	}
+	segHash := segmentHash(raw)
+	_, err = conn.Exec(
+		`INSERT OR IGNORE INTO imported_segments (vault_id, node_id, segment_id, segment_hash, imported_at) VALUES (?, ?, ?, ?, ?)`,
+		vaultID, h.NodeID, h.SegmentID, segHash, now,
+	)
+	if err != nil {
+		return err
+	}
+	res.SegmentsImported++
+	return nil
+}
 
-	// Ensure sessions, insert events
+func validateSegmentHeader(h *Header, vaultID string, res *ImportResult) error {
+	if h.VaultID != vaultID {
+		res.SegmentsInvalid++
+		return fmt.Errorf("object vault_id %s does not match local vault %s", h.VaultID, vaultID)
+	}
+	if h.NodeID == "" || h.SegmentID == "" {
+		res.SegmentsInvalid++
+		return fmt.Errorf("invalid node_id or segment_id in header")
+	}
+	return nil
+}
+
+func segmentAlreadyImported(conn *sql.DB, vaultID, nodeID, segmentID string, res *ImportResult) bool {
+	var exists int
+	err := conn.QueryRow(
+		`SELECT 1 FROM imported_segments WHERE vault_id=? AND node_id=? AND segment_id=?`,
+		vaultID, nodeID, segmentID,
+	).Scan(&exists)
+	if err == nil {
+		res.SegmentsSkipped++
+		return true
+	}
+	return false
+}
+
+func insertSegmentData(st *store.Store, conn *sql.DB, h *Header, payload *SegmentPayload, tombstones []tombstoneRec) error {
 	for _, sess := range payload.Sessions {
 		sid := store.SyncSessionID(h.NodeID, sess.SessionID)
 		_ = st.EnsureSyncSession(sid, sess.Host, sess.Tty, sess.InitialCwd, sess.StartedAt)
@@ -178,23 +196,12 @@ func importSegment(conn *sql.DB, st *store.Store, syncStore SyncStore, key strin
 			return err
 		}
 	}
-
-	// Pins
 	for _, p := range payload.Pins {
 		if p.Pinned {
 			sid := store.SyncSessionID(h.NodeID, p.SessionID)
 			_ = st.PinSession(sid)
 		}
 	}
-
-	_, err = conn.Exec(
-		`INSERT OR IGNORE INTO imported_segments (vault_id, node_id, segment_id, segment_hash, imported_at) VALUES (?, ?, ?, ?, ?)`,
-		vaultID, h.NodeID, h.SegmentID, segHash, now,
-	)
-	if err != nil {
-		return err
-	}
-	res.SegmentsImported++
 	return nil
 }
 
@@ -265,19 +272,9 @@ func importTombstone(conn *sql.DB, syncStore SyncStore, key string, vaultID stri
 	if h.ObjectType != TypeTomb {
 		return nil
 	}
-
-	// Vault binding validation
-	if h.VaultID != vaultID {
-		res.TombstonesInvalid++
-		return fmt.Errorf("object vault_id %s does not match local vault %s", h.VaultID, vaultID)
+	if err := validateTombstoneHeader(h, vaultID, res); err != nil {
+		return err
 	}
-
-	// Tombstone ID sanity check
-	if h.TombstoneID == "" {
-		res.TombstonesInvalid++
-		return fmt.Errorf("invalid tombstone_id in header")
-	}
-
 	plain, err := maybeDecrypt(h, body, K_master)
 	if err != nil {
 		res.TombstonesInvalid++
@@ -288,19 +285,50 @@ func importTombstone(conn *sql.DB, syncStore SyncStore, key string, vaultID stri
 		res.TombstonesInvalid++
 		return err
 	}
-
-	var exists int
-	err = conn.QueryRow(`SELECT 1 FROM applied_tombstones WHERE tombstone_id=? AND vault_id=?`, h.TombstoneID, vaultID).Scan(&exists)
-	if err == nil {
+	if tombstoneAlreadyApplied(conn, h.TombstoneID, vaultID) {
 		return nil
 	}
+	eventIDs, err := queryTombstoneEventIDs(conn, &payload)
+	if err != nil {
+		return err
+	}
+	deleteTombstoneEvents(conn, eventIDs)
+	_, err = conn.Exec(
+		`INSERT OR IGNORE INTO applied_tombstones (tombstone_id, vault_id, applied_at, node_id, start_ts, end_ts) VALUES (?, ?, ?, ?, ?, ?)`,
+		h.TombstoneID, vaultID, now, payload.NodeID, payload.StartTs, payload.EndTs,
+	)
+	if err != nil {
+		return err
+	}
+	res.TombstonesApplied++
+	return nil
+}
 
-	// Apply time-window delete. If NodeID set, only match sessions for that node.
+func validateTombstoneHeader(h *Header, vaultID string, res *ImportResult) error {
+	if h.VaultID != vaultID {
+		res.TombstonesInvalid++
+		return fmt.Errorf("object vault_id %s does not match local vault %s", h.VaultID, vaultID)
+	}
+	if h.TombstoneID == "" {
+		res.TombstonesInvalid++
+		return fmt.Errorf("invalid tombstone_id in header")
+	}
+	return nil
+}
+
+func tombstoneAlreadyApplied(conn *sql.DB, tombstoneID, vaultID string) bool {
+	var exists int
+	err := conn.QueryRow(`SELECT 1 FROM applied_tombstones WHERE tombstone_id=? AND vault_id=?`, tombstoneID, vaultID).Scan(&exists)
+	return err == nil
+}
+
+func queryTombstoneEventIDs(conn *sql.DB, payload *TombstonePayload) ([]int64, error) {
 	nodePrefix := ""
 	if payload.NodeID != "" {
 		nodePrefix = payload.NodeID + syncSessionSep
 	}
 	var rows *sql.Rows
+	var err error
 	if nodePrefix != "" {
 		rows, err = conn.Query(`
 			SELECT e.event_id FROM events e
@@ -316,37 +344,26 @@ func importTombstone(conn *sql.DB, syncStore SyncStore, key string, vaultID stri
 		`, payload.StartTs, payload.EndTs)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var eventIDs []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
 			_ = rows.Close()
-			return err
+			return nil, err
 		}
 		eventIDs = append(eventIDs, id)
 	}
 	_ = rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
+	return eventIDs, rows.Err()
+}
 
-	// Delete from events_fts and events
+func deleteTombstoneEvents(conn *sql.DB, eventIDs []int64) {
 	for _, id := range eventIDs {
 		_, _ = conn.Exec(`DELETE FROM events_fts WHERE rowid=?`, id)
 		_, _ = conn.Exec(`DELETE FROM events WHERE event_id=?`, id)
 	}
-
-	_, err = conn.Exec(
-		`INSERT OR IGNORE INTO applied_tombstones (tombstone_id, vault_id, applied_at, node_id, start_ts, end_ts) VALUES (?, ?, ?, ?, ?, ?)`,
-		h.TombstoneID, vaultID, now, payload.NodeID, payload.StartTs, payload.EndTs,
-	)
-	if err != nil {
-		return err
-	}
-	res.TombstonesApplied++
-	return nil
 }
 
 func maybeDecrypt(h *Header, body []byte, K_master []byte) ([]byte, error) {

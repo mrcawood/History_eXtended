@@ -12,158 +12,120 @@ import (
 
 // TestConcurrentSync verifies concurrent segment creation and sync
 func TestConcurrentSync(t *testing.T) {
-	// Create two test nodes in the same vault
 	nodeA := test_utils.NewNodeInVault(t, "main", "nodeA")
 	defer nodeA.Cleanup()
-
-	nodeB := test_utils.NewNodeInVault(t, "main", "nodeB") // Same vault as nodeA
+	nodeB := test_utils.NewNodeInVault(t, "main", "nodeB")
 	defer nodeB.Cleanup()
 
-	// Create multiple segments on each node
 	numSegments := 5
+	keysA, keysB := createConcurrentSegments(t, nodeA, nodeB, numSegments)
+	verifySegmentCounts(t, keysA, keysB, numSegments)
+	syncSegmentsBetweenNodes(t, nodeA, nodeB, keysA, keysB)
+	runSyncRoundsUntilConverged(t, nodeA, nodeB, 5)
+	test_utils.AssertConverged(t, nodeA, nodeB)
+	verifySegmentIntegrity(t, nodeA)
+}
+
+func createConcurrentSegments(t *testing.T, nodeA, nodeB *test_utils.TestNode, n int) (keysA, keysB []string) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	keysA := make([]string, 0, numSegments)
-	keysB := make([]string, 0, numSegments)
-
-	// Concurrently create segments on node A
-	for i := 0; i < numSegments; i++ {
+	keysA = make([]string, 0, n)
+	keysB = make([]string, 0, n)
+	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-
-			events := []hs.SegmentEvent{
-				{
-					NodeID:    "nodeA",
-					SessionID: "sessionA",
-					Seq:       i + 1,
-					StartedAt: float64(time.Now().UTC().Add(time.Duration(i) * time.Minute).Unix()),
-					EndedAt:   float64(time.Now().UTC().Add(time.Duration(i) * time.Minute).Add(time.Second).Unix()),
-					Cmd:       "command A" + string(rune('A'+i)),
-					ExitCode:  0,
-					Cwd:       "/home/user",
-				},
+			ev := hs.SegmentEvent{
+				NodeID: "nodeA", SessionID: "sessionA", Seq: i + 1,
+				StartedAt: float64(time.Now().UTC().Add(time.Duration(i) * time.Minute).Unix()),
+				EndedAt:   float64(time.Now().UTC().Add(time.Duration(i)*time.Minute).Add(time.Second).Unix()),
+				Cmd:       "command A" + string(rune('A'+i)), ExitCode: 0, Cwd: "/home/user",
 			}
-
-			header, payload := nodeA.CreateTestSegment(events)
+			header, payload := nodeA.CreateTestSegment([]hs.SegmentEvent{ev})
 			key, _ := nodeA.PublishSegment(header, payload)
-
 			mu.Lock()
 			keysA = append(keysA, key)
 			mu.Unlock()
 		}(i)
 	}
-
-	// Concurrently create segments on node B
-	for i := 0; i < numSegments; i++ {
+	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-
-			events := []hs.SegmentEvent{
-				{
-					NodeID:    "nodeB",
-					SessionID: "sessionB",
-					Seq:       i + 1,
-					StartedAt: float64(time.Now().UTC().Add(time.Duration(i) * time.Minute).Unix()),
-					EndedAt:   float64(time.Now().UTC().Add(time.Duration(i) * time.Minute).Add(time.Second).Unix()),
-					Cmd:       "command B" + string(rune('A'+i)),
-					ExitCode:  0,
-					Cwd:       "/home/user",
-				},
+			ev := hs.SegmentEvent{
+				NodeID: "nodeB", SessionID: "sessionB", Seq: i + 1,
+				StartedAt: float64(time.Now().UTC().Add(time.Duration(i) * time.Minute).Unix()),
+				EndedAt:   float64(time.Now().UTC().Add(time.Duration(i)*time.Minute).Add(time.Second).Unix()),
+				Cmd:       "command B" + string(rune('A'+i)), ExitCode: 0, Cwd: "/home/user",
 			}
-
-			header, payload := nodeB.CreateTestSegment(events)
+			header, payload := nodeB.CreateTestSegment([]hs.SegmentEvent{ev})
 			key, _ := nodeB.PublishSegment(header, payload)
-
 			mu.Lock()
 			keysB = append(keysB, key)
 			mu.Unlock()
 		}(i)
 	}
-
 	wg.Wait()
+	return keysA, keysB
+}
 
-	// Verify each node has its own segments
-	if len(keysA) != numSegments {
-		t.Errorf("Node A should have %d segments, got %d", numSegments, len(keysA))
+func verifySegmentCounts(t *testing.T, keysA, keysB []string, want int) {
+	if len(keysA) != want {
+		t.Errorf("Node A should have %d segments, got %d", want, len(keysA))
 	}
-
-	if len(keysB) != numSegments {
-		t.Errorf("Node B should have %d segments, got %d", numSegments, len(keysB))
+	if len(keysB) != want {
+		t.Errorf("Node B should have %d segments, got %d", want, len(keysB))
 	}
+}
 
-	// Concurrently sync segments between nodes
-	var syncWg sync.WaitGroup
-	var syncMu sync.Mutex
-	syncedKeysA := make([]string, 0, numSegments)
-	syncedKeysB := make([]string, 0, numSegments)
-
-	// Node A pulls from Node B
-	for i, key := range keysB {
-		syncWg.Add(1)
-		go func(i int, key string) {
-			defer syncWg.Done()
-
+func syncSegmentsBetweenNodes(t *testing.T, nodeA, nodeB *test_utils.TestNode, keysA, keysB []string) {
+	var wg sync.WaitGroup
+	for _, key := range keysB {
+		wg.Add(1)
+		go func(key string) {
+			defer wg.Done()
 			data, _ := nodeB.Store.Get(key)
 			nodeA.Store.PutAtomic(key, data)
-
-			syncMu.Lock()
-			syncedKeysA = append(syncedKeysA, key)
-			syncMu.Unlock()
-		}(i, key)
+		}(key)
 	}
-
-	// Node B pulls from Node A
-	for i, key := range keysA {
-		syncWg.Add(1)
-		go func(i int, key string) {
-			defer syncWg.Done()
-
+	for _, key := range keysA {
+		wg.Add(1)
+		go func(key string) {
+			defer wg.Done()
 			data, _ := nodeA.Store.Get(key)
 			nodeB.Store.PutAtomic(key, data)
-
-			syncMu.Lock()
-			syncedKeysB = append(syncedKeysB, key)
-			syncMu.Unlock()
-		}(i, key)
+		}(key)
 	}
+	wg.Wait()
+}
 
-	syncWg.Wait()
-
-	// Perform explicit sync rounds to ensure convergence
-	for i := 0; i < 5; i++ {
+func runSyncRoundsUntilConverged(t *testing.T, nodeA, nodeB *test_utils.TestNode, maxRounds int) {
+	for i := 0; i < maxRounds; i++ {
 		if err := nodeA.SyncRound(nodeB); err != nil {
 			t.Fatalf("Sync round %d failed: %v", i, err)
 		}
 		if err := nodeB.SyncRound(nodeA); err != nil {
 			t.Fatalf("Sync round %d failed: %v", i, err)
 		}
-
-		// Check if converged
 		keysA, _ := nodeA.ListSegments()
 		keysB, _ := nodeB.ListSegments()
 		if len(keysA) == len(keysB) {
-			break
+			return
 		}
 	}
+}
 
-	// Verify convergence invariants
-	test_utils.AssertConverged(t, nodeA, nodeB)
-
-	// Verify data integrity - no corruption during concurrent operations
-	finalKeysA, _ := nodeA.ListSegments()
-	for _, key := range finalKeysA {
-		header, payload, err := nodeA.RetrieveSegment(key)
+func verifySegmentIntegrity(t *testing.T, node *test_utils.TestNode) {
+	keys, _ := node.ListSegments()
+	for _, key := range keys {
+		header, payload, err := node.RetrieveSegment(key)
 		if err != nil {
-			t.Errorf("Failed to retrieve segment %s from node A: %v", key, err)
+			t.Errorf("Failed to retrieve segment %s: %v", key, err)
+			continue
 		}
-
-		// Verify segment has expected properties
 		if header.NodeID != "nodeA" && header.NodeID != "nodeB" {
 			t.Errorf("Unexpected NodeID in segment %s: %s", key, header.NodeID)
 		}
-
 		if len(payload.Events) != 1 {
 			t.Errorf("Segment %s should have 1 event, got %d", key, len(payload.Events))
 		}
