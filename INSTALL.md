@@ -146,6 +146,8 @@ To force on Bash < 5 (unsupported, best-effort): set `HX_BASH_ALLOW_UNSUPPORTED=
 
 Override with `HX_SPOOL_DIR`, `HX_DB_PATH`, `HX_BLOB_DIR`.
 
+**Help:** `hx --help` and `hx help <command>` (e.g. `hx help find`).
+
 ---
 
 ## Config

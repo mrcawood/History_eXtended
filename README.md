@@ -88,6 +88,8 @@ See [INSTALL.md#live-capture-bash](INSTALL.md#live-capture-bash).
 
 ## Commands
 
+Use `hx --help` for usage and `hx help <command>` or `hx <command> --help` for subcommand help.
+
 | Command | Description |
 |---------|-------------|
 | `hx status` | Capture state, daemon health, paths |

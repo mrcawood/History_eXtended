@@ -90,6 +90,111 @@ func TestPrintFindWideIncludesSessionAndSeq(t *testing.T) {
 
 func intPtr(n int) *int { return &n }
 
+// runHx execs the built hx binary with args, returns stdout+stderr and exit code.
+func runHx(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	// Find module root and bin/hx (works when tests run from module root or cmd/hx)
+	wd, _ := os.Getwd()
+	exe := ""
+	for d := wd; d != "" && d != filepath.Dir(d); d = filepath.Dir(d) {
+		candidate := filepath.Join(d, "bin", "hx")
+		if _, err := os.Stat(candidate); err == nil {
+			exe = candidate
+			break
+		}
+		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {
+			// Build if needed
+			buildCmd := exec.Command("go", "build", "-tags", "sqlite_fts5", "-o", "bin/hx", "./cmd/hx")
+			buildCmd.Dir = d
+			if out, err := buildCmd.CombinedOutput(); err != nil {
+				t.Skipf("build hx: %v\n%s", err, out)
+			}
+			exe = filepath.Join(d, "bin", "hx")
+			break
+		}
+	}
+	if exe == "" {
+		t.Skip("could not find or build hx binary")
+	}
+	cmd := exec.Command(exe, args...)
+	out, err := cmd.CombinedOutput()
+	code := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
+		} else {
+			code = 1
+		}
+	}
+	return string(out), code
+}
+
+func TestHelpRoot(t *testing.T) {
+	out, code := runHx(t, "--help")
+	if code != 0 {
+		t.Errorf("hx --help exit=%d, want 0", code)
+	}
+	if !strings.Contains(out, "Usage:") || !strings.Contains(out, "status") {
+		t.Errorf("hx --help missing Usage or status: %s", out)
+	}
+
+	out, code = runHx(t, "-h")
+	if code != 0 {
+		t.Errorf("hx -h exit=%d, want 0", code)
+	}
+	if !strings.Contains(out, "Usage:") || !strings.Contains(out, "status") {
+		t.Errorf("hx -h missing Usage or status: %s", out)
+	}
+
+	out, code = runHx(t, "help")
+	if code != 0 {
+		t.Errorf("hx help exit=%d, want 0", code)
+	}
+	if !strings.Contains(out, "Usage:") || !strings.Contains(out, "status") {
+		t.Errorf("hx help missing Usage or status: %s", out)
+	}
+}
+
+func TestHelpFind(t *testing.T) {
+	out, code := runHx(t, "help", "find")
+	if code != 0 {
+		t.Errorf("hx help find exit=%d, want 0", code)
+	}
+	for _, s := range []string{"--wide", "--no-self", "--no-import", "HX_FIND_DEFAULT"} {
+		if !strings.Contains(out, s) {
+			t.Errorf("hx help find missing %q: %s", s, out)
+		}
+	}
+
+	out, code = runHx(t, "find", "--help")
+	if code != 0 {
+		t.Errorf("hx find --help exit=%d, want 0", code)
+	}
+	if !strings.Contains(out, "--wide") {
+		t.Errorf("hx find --help missing --wide: %s", out)
+	}
+}
+
+func TestHelpSync(t *testing.T) {
+	out, code := runHx(t, "sync", "--help")
+	if code != 0 {
+		t.Errorf("hx sync --help exit=%d, want 0", code)
+	}
+	if !strings.Contains(out, "init") || !strings.Contains(out, "folder:") {
+		t.Errorf("hx sync --help missing init/folder: %s", out)
+	}
+}
+
+func TestUnknownCommandHint(t *testing.T) {
+	out, code := runHx(t, "unknown")
+	if code == 0 {
+		t.Errorf("hx unknown exit=%d, want non-zero", code)
+	}
+	if !strings.Contains(out, "hx --help") {
+		t.Errorf("unknown command should hint hx --help: %s", out)
+	}
+}
+
 // TestFindIntegration runs hx find against a seeded DB via subprocess.
 func TestFindIntegration(t *testing.T) {
 	tmp := t.TempDir()
