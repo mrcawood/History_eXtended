@@ -5,7 +5,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mrcawood/History_eXtended)](https://goreportcard.com/report/github.com/mrcawood/History_eXtended)
 
-A local-first "flight recorder" for the terminal. Captures command events (text, timestamps, exit codes, cwd, session) with negligible overhead, stores them in SQLite, and provides evidence-backed retrieval.
+A "flight recorder" for the terminal. Captures command events (text, timestamps, exit codes, cwd, session) with negligible overhead, stores them in SQLite, and provides evidence-backed retrieval.
 
 ## What is hx?
 
@@ -50,8 +50,8 @@ make build
 make install
 hxd &
 
-# Add to .zshrc
-source /path/to/History_eXtended/src/hooks/hx.zsh
+# Add to .zshrc (make install prompts to add this)
+source ~/.local/lib/hx/hx.zsh
 
 # Verify
 hx status
@@ -67,7 +67,7 @@ See [INSTALL.md#live-capture-zsh](INSTALL.md#live-capture-zsh).
 Bash 5+ is supported. Add to `.bashrc`:
 
 ```bash
-source /path/to/History_eXtended/src/hooks/bash/hx.bash
+source ~/.local/lib/hx/hx.bash
 ```
 
 See [INSTALL.md#live-capture-bash](INSTALL.md#live-capture-bash).
@@ -86,6 +86,17 @@ See [INSTALL.md#live-capture-bash](INSTALL.md#live-capture-bash).
 
 ---
 
+## Find vs Query
+
+- **`hx find`** — Literal text search when you know the words. Fast, exact FTS match.
+  - Example: `hx find make build` — finds commands containing "make build"
+  - Example: `hx find "git commit"` — phrase search
+- **`hx query`** — Evidence-backed retrieval when you describe what you want. Optional semantic ranking and LLM summary via Ollama.
+  - Example: `hx query "commands that built the project"` — semantic + optional summary
+  - Example: `hx query --file ./error.log` — find sessions with similar artifact
+
+---
+
 ## Commands
 
 Use `hx --help` for usage and `hx help <command>` or `hx <command> --help` for subcommand help.
@@ -97,6 +108,7 @@ Use `hx --help` for usage and `hx help <command>` or `hx <command> --help` for s
 | `hx last` | Last session summary, failure context |
 | `hx find <text>` | Full-text search over commands |
 | `hx dump` | Last 20 events (debug) |
+| `hx debug` | Diagnostics: daemon PID, spool, DB |
 | `hx attach --file <path>` | Link artifact to last session |
 | `hx query "<question>" [--no-llm]` | Evidence-backed search; optional Ollama semantic + summary |
 | `hx query --file <path>` | Find sessions with similar artifact |

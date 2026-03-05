@@ -4,11 +4,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -27,7 +29,9 @@ import (
 	"github.com/mrcawood/History_eXtended/internal/query"
 	"github.com/mrcawood/History_eXtended/internal/retention"
 	"github.com/mrcawood/History_eXtended/internal/store"
+	"github.com/mrcawood/History_eXtended/internal/spool"
 	"github.com/mrcawood/History_eXtended/internal/sync"
+	"github.com/jedib0t/go-pretty/v6/table"
 )
 
 func getConfig() *config.Config {
@@ -133,6 +137,94 @@ func cmdStatus() {
 			fmt.Printf("  ignore: %v\n", cfg.IgnorePatterns)
 		}
 	}
+}
+
+func cmdDebug() {
+	fmt.Println("hx debug")
+	fmt.Println("")
+
+	// 1. Pidfile validity
+	pidPath := pidFile()
+	pidOk := false
+	var pid int
+	if b, err := os.ReadFile(pidPath); err == nil {
+		if p, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil && p > 0 {
+			pid = p
+			if err := syscall.Kill(pid, 0); err == nil {
+				pidOk = true
+			}
+		}
+	}
+	if pidOk {
+		comm := processComm(pid)
+		isHxd := strings.Contains(comm, "hxd")
+		if isHxd {
+			fmt.Printf("  daemon:  running (pid %d) ✓\n", pid)
+		} else {
+			fmt.Printf("  daemon:  WARN pid %d is %q, expected hxd (stale pidfile?)\n", pid, comm)
+		}
+	} else {
+		fmt.Printf("  daemon:  not running (no pidfile or process gone)\n")
+	}
+
+	// 2. Spool
+	spoolDir := spoolDir()
+	eventsPath := spool.EventsPath(spoolDir)
+	spoolExists := false
+	var spoolMtime time.Time
+	var spoolLines int64
+	if fi, err := os.Stat(eventsPath); err == nil {
+		spoolExists = true
+		spoolMtime = fi.ModTime()
+		if f, err := os.Open(eventsPath); err == nil {
+			sc := bufio.NewScanner(f)
+			for sc.Scan() {
+				spoolLines++
+			}
+			_ = f.Close()
+		}
+	}
+	if spoolExists {
+		fmt.Printf("  spool:   %s\n", cmdutil.NormalizePath(eventsPath))
+		fmt.Printf("           %d lines, mtime %s\n", spoolLines, spoolMtime.Format("2006-01-02 15:04:05"))
+	} else {
+		fmt.Printf("  spool:   %s - MISSING (no capture; hooks not loaded?)\n", cmdutil.NormalizePath(eventsPath))
+	}
+
+	// 3. DB
+	dbPath := dbPath()
+	conn, err := db.Open(dbPath)
+	if err != nil {
+		fmt.Printf("  db:      %s - ERROR %v\n", cmdutil.NormalizePath(dbPath), err)
+		fmt.Println("")
+		return
+	}
+	defer func() { _ = conn.Close() }()
+	var eventCount int
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&eventCount)
+	var lastStarted float64
+	_ = conn.QueryRow(`SELECT MAX(started_at) FROM events`).Scan(&lastStarted)
+	fmt.Printf("  db:      %s\n", cmdutil.NormalizePath(dbPath))
+	fmt.Printf("           %d events", eventCount)
+	if eventCount > 0 && lastStarted > 0 {
+		fmt.Printf(", newest %s", cmdutil.FormatTimestamp(lastStarted, false))
+	}
+	fmt.Println()
+	fmt.Println("")
+}
+
+func processComm(pid int) string {
+	// Try /proc on Linux first
+	commPath := filepath.Join("/proc", strconv.Itoa(pid), "comm")
+	if b, err := os.ReadFile(commPath); err == nil {
+		return strings.TrimSpace(string(b))
+	}
+	// Fallback: ps (Unix)
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
+	if err != nil {
+		return "?"
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func cmdPause() {
@@ -494,24 +586,47 @@ func cmdAttach(args []string) {
 	fmt.Printf("Attached artifact %d to session %s\n", aid, linkSessionID)
 }
 
-func cmdQuery(args []string) {
-	var filePath string
-	var noLLM bool
+type queryOpts struct {
+	filePath  string
+	noLLM     bool
+	wide      bool
+	compact   bool
+	noSelf    bool
+	noImport  bool
+}
+
+func parseQueryArgs(args []string) (question string, opts queryOpts) {
 	var questionParts []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--file", "-f":
 			if i+1 < len(args) {
-				filePath = args[i+1]
+				opts.filePath = args[i+1]
 				i++
 			}
 		case "--no-llm":
-			noLLM = true
+			opts.noLLM = true
+		case "--wide":
+			opts.wide = true
+		case "--compact":
+			opts.compact = true
+		case "--no-self":
+			opts.noSelf = true
+		case "--no-import":
+			opts.noImport = true
 		default:
 			questionParts = append(questionParts, args[i])
 		}
 	}
-	question := strings.Join(questionParts, " ")
+	question = strings.Join(questionParts, " ")
+	if !opts.wide && !opts.compact {
+		opts.compact = true
+	}
+	return question, opts
+}
+
+func cmdQuery(args []string) {
+	question, opts := parseQueryArgs(args)
 
 	conn, err := db.Open(dbPath())
 	if err != nil {
@@ -520,15 +635,62 @@ func cmdQuery(args []string) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	if filePath != "" {
-		cmdQueryByFile(conn, filePath)
+	if opts.filePath != "" {
+		cmdQueryByFile(conn, opts.filePath)
 		return
 	}
 	if strings.TrimSpace(question) == "" {
-		fmt.Fprintf(os.Stderr, "hx query: usage: hx query \"<question>\" [--no-llm]   OR   hx query --file <path>\n")
+		fmt.Fprintf(os.Stderr, "hx query: usage: hx query \"<question>\" [--no-llm] [--compact|--wide] [--no-self] [--no-import]   OR   hx query --file <path>\n")
 		os.Exit(1)
 	}
-	cmdQueryByQuestion(conn, question, noLLM)
+	cmdQueryByQuestion(conn, question, opts)
+}
+
+func printQueryTable(candidates []query.Candidate, wide bool, termWidth int, w io.Writer) {
+	t := table.NewWriter()
+	t.SetOutputMirror(w)
+	t.Style().Options = table.OptionsNoBorders
+	t.SetAllowedRowLength(termWidth)
+
+	if wide {
+		t.AppendHeader(table.Row{"event_id", "session_id", "seq", "when", "exit", "cwd", "cmd"})
+		// Reserve ~90 chars for fixed cols; give remainder to cmd
+		cwdW := 22
+		cmdW := termWidth - 95
+		if cmdW < 12 {
+			cmdW = 12
+			cwdW = 16
+		}
+		for _, c := range candidates {
+			cwdNorm := cmdutil.NormalizePath(c.Cwd)
+			cwdShow := cmdutil.TruncateLeft(cwdNorm, cwdW)
+			cmdShow := cmdutil.TruncateRight(c.Cmd, cmdW)
+			t.AppendRow(table.Row{c.EventID, c.SessionID, c.Seq, cmdutil.FormatWhen(c.StartedAt), c.ExitCode, cwdShow, cmdShow})
+		}
+	} else {
+		// Compact: id, when, exit, cwd, cmd
+		t.AppendHeader(table.Row{"id", "when", "exit", "cwd", "cmd"})
+		idW, whenW, exitW := 8, 8, 5
+		cwdW := 18
+		if termWidth < 80 {
+			cwdW = 14
+		}
+		cmdW := termWidth - idW - whenW - exitW - cwdW - 8
+		if cmdW < 10 {
+			cmdW = 10
+			cwdW = termWidth - idW - whenW - exitW - cmdW - 8
+			if cwdW < 8 {
+				cwdW = 8
+			}
+		}
+		for _, c := range candidates {
+			cwdNorm := cmdutil.NormalizePath(c.Cwd)
+			cwdShow := cmdutil.TruncateLeft(cwdNorm, cwdW)
+			cmdShow := cmdutil.TruncateRight(c.Cmd, cmdW)
+			t.AppendRow(table.Row{c.EventID, cmdutil.FormatWhen(c.StartedAt), c.ExitCode, cwdShow, cmdShow})
+		}
+	}
+	t.Render()
 }
 
 func cmdQueryByFile(conn *sql.DB, filePath string) {
@@ -557,7 +719,7 @@ func cmdQueryByFile(conn *sql.DB, filePath string) {
 	}
 }
 
-func cmdQueryByQuestion(conn *sql.DB, question string, noLLM bool) {
+func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 	cfg := getConfig()
 	if cfg == nil {
 		cfg = &config.Config{OllamaEnabled: true, OllamaBaseURL: "http://localhost:11434", OllamaEmbedModel: "nomic-embed-text", OllamaChatModel: "llama3.2"}
@@ -567,27 +729,34 @@ func cmdQueryByQuestion(conn *sql.DB, question string, noLLM bool) {
 		fmt.Fprintf(os.Stderr, "hx query: %v\n", err)
 		os.Exit(1)
 	}
+	// Filter by --no-self and --no-import
+	var filtered []query.Candidate
+	for _, c := range candidates {
+		if opts.noSelf && isSelfCmd(c.Cmd) {
+			continue
+		}
+		if opts.noImport && strings.HasPrefix(c.SessionID, "import-") {
+			continue
+		}
+		filtered = append(filtered, c)
+	}
+	candidates = filtered
+
 	if len(candidates) == 0 {
 		fmt.Println("No matching events found.")
 		return
 	}
-	fmt.Printf("Evidence (%d):\n\n", len(candidates))
-	fmt.Printf("%-8s %-24s %4s %4s %-40s %s\n", "event_id", "session_id", "seq", "exit", "cwd", "cmd")
-	fmt.Println(strings.Repeat("-", 100))
-	for _, c := range candidates {
-		exit := fmt.Sprintf("%d", c.ExitCode)
-		cmdShort := c.Cmd
-		if len(cmdShort) > 38 {
-			cmdShort = cmdShort[:35] + "..."
-		}
-		cwdShort := c.Cwd
-		if len(cwdShort) > 38 {
-			cwdShort = cwdShort[:35] + "..."
-		}
-		fmt.Printf("%-8d %-24s %4d %4s %-40s %s\n", c.EventID, c.SessionID, c.Seq, exit, cwdShort, cmdShort)
-	}
 
-	if !noLLM && cfg.OllamaEnabled && ollama.Available(context.Background(), cfg.OllamaBaseURL) {
+	// Terminal width for table; use 120 when stdout is not a TTY (piped/redirected)
+	termWidth := cmdutil.TerminalWidth()
+	if !cmdutil.IsTerminal(os.Stdout) {
+		termWidth = 120
+	}
+	fmt.Printf("Results (%d):\n\n", len(candidates))
+	printQueryTable(candidates, opts.wide, termWidth, os.Stdout)
+	fmt.Println()
+
+	if !opts.noLLM && cfg.OllamaEnabled && ollama.Available(context.Background(), cfg.OllamaBaseURL) {
 		topN := 5
 		if len(candidates) < topN {
 			topN = len(candidates)
@@ -619,6 +788,28 @@ func cmdQueryByQuestion(conn *sql.DB, question string, noLLM bool) {
 	}
 }
 
+func isConfigFile(base string) bool {
+	switch base {
+	case ".zshrc", ".bashrc", ".profile", ".bash_profile", ".zprofile":
+		return true
+	}
+	return false
+}
+
+func suggestHistoryFile(configBase string) string {
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		home = "~"
+	}
+	switch configBase {
+	case ".zshrc", ".zprofile":
+		return filepath.Join(home, ".zsh_history")
+	case ".bashrc", ".bash_profile", ".profile":
+		return filepath.Join(home, ".bash_history")
+	}
+	return filepath.Join(home, ".zsh_history")
+}
+
 func cmdImport(args []string) {
 	var filePath, host, shell string
 	for i := 0; i < len(args); i++ {
@@ -647,9 +838,30 @@ func cmdImport(args []string) {
 		}
 	}
 	if filePath == "" {
-		fmt.Fprintf(os.Stderr, "hx import: usage: hx import --file <path> [--host label] [--shell zsh|bash|auto]\n")
+		fmt.Fprintf(os.Stderr, "hx import: usage: hx import --file <path> [--host label] [--shell zsh|bash|auto] [--force]\n")
 		os.Exit(1)
 	}
+
+	// Safeguard: warn if importing a config file instead of history
+	base := filepath.Base(filepath.Clean(filePath))
+	if isConfigFile(base) {
+		suggest := suggestHistoryFile(base)
+		fmt.Fprintf(os.Stderr, "hx import: %q looks like a shell config file, not command history.\n", base)
+		fmt.Fprintf(os.Stderr, "  Did you mean: hx import --file %s\n", suggest)
+		fmt.Fprintf(os.Stderr, "  Use --force to import anyway.\n")
+		force := false
+		for _, a := range args {
+			if a == "--force" {
+				force = true
+				break
+			}
+		}
+		if !force {
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "  Proceeding with --force.\n")
+	}
+
 	if shell == "" {
 		shell = "auto"
 	}
@@ -668,6 +880,9 @@ func cmdImport(args []string) {
 		fmt.Fprintf(os.Stderr, "hx import: file truncated at %d lines (use smaller file or increase limit)\n", imp.MaxLines)
 	}
 	fmt.Printf("Imported %d events (skipped %d duplicates)\n", inserted, skipped)
+	if inserted > 0 {
+		fmt.Printf("  Try: hx find <text>  or  hx dump  or  hx last\n")
+	}
 }
 
 func cmdPin(args []string) {
@@ -798,13 +1013,21 @@ func cmdExport(args []string) {
 	fmt.Print(export.Markdown(exp, redact))
 }
 
-func cmdDump() {
+func cmdDump(args []string) {
 	conn, err := db.Open(dbPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hx dump: %v\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = conn.Close() }()
+
+	wide := false
+	for _, a := range args {
+		if a == "--wide" {
+			wide = true
+			break
+		}
+	}
 
 	rows, err := conn.Query(`
 		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.cwd, COALESCE(c.cmd_text, '')
@@ -819,29 +1042,91 @@ func cmdDump() {
 	}
 	defer func() { _ = rows.Close() }()
 
-	fmt.Printf("%-8s %-24s %4s %4s %-40s %s\n", "event_id", "session_id", "seq", "exit", "cwd", "cmd")
-	fmt.Println(strings.Repeat("-", 100))
-
+	var dumpRows []findRow
 	for rows.Next() {
-		var eventID int64
-		var sessionID string
-		var seq int
-		var exitCode *int
-		var cwd, cmd string
-		if err := rows.Scan(&eventID, &sessionID, &seq, &exitCode, &cwd, &cmd); err != nil {
+		var r findRow
+		if err := rows.Scan(&r.eventID, &r.sessionID, &r.seq, &r.exitCode, &r.cwd, &r.cmd); err != nil {
 			continue
 		}
+		dumpRows = append(dumpRows, r)
+	}
+
+	tw := cmdutil.TerminalWidth()
+	if wide {
+		printDumpWide(dumpRows, tw)
+	} else {
+		printDumpCompact(dumpRows, tw)
+	}
+}
+
+func printDumpCompact(rows []findRow, termWidth int) {
+	idW, exitW := 8, 5
+	cwdW := 18
+	if termWidth < 80 {
+		cwdW = 14
+	}
+	cmdW := termWidth - idW - exitW - cwdW - 6
+	if cmdW < 10 {
+		cmdW = 10
+		cwdW = termWidth - idW - exitW - cmdW - 6
+		if cwdW < 8 {
+			cwdW = 8
+		}
+	}
+
+	fmt.Printf("%-*s %-*s %-*s %s\n", idW, "id", exitW, "exit", cwdW, "cwd", "cmd")
+	fmt.Println(strings.Repeat("-", termWidth))
+
+	var prevSess string
+	for _, r := range rows {
+		if prevSess != "" && prevSess != r.sessionID {
+			fmt.Println()
+		}
+		prevSess = r.sessionID
+
 		exit := "-"
-		if exitCode != nil {
-			exit = fmt.Sprintf("%d", *exitCode)
+		if r.exitCode != nil {
+			exit = fmt.Sprintf("%d", *r.exitCode)
 		}
-		if len(cmd) > 38 {
-			cmd = cmd[:35] + "..."
+		cwdNorm := cmdutil.NormalizePath(r.cwd)
+		cwdShow := cmdutil.TruncateLeft(cwdNorm, cwdW)
+		cmdShow := cmdutil.TruncateRight(r.cmd, cmdW)
+		fmt.Printf("%-*d %-*s %-*s %s\n", idW, r.eventID, exitW, exit, cwdW, cwdShow, cmdShow)
+	}
+}
+
+func printDumpWide(rows []findRow, termWidth int) {
+	sessW, cwdW := 24, 40
+	cmdW := 50
+	if termWidth > 80 {
+		cmdW = termWidth - 8 - sessW - 4 - 4 - cwdW - 6
+		if cmdW < 20 {
+			cmdW = 20
 		}
-		if len(cwd) > 38 {
-			cwd = cwd[:35] + "..."
+	}
+	sep := termWidth
+	if sep < 100 {
+		sep = 100
+	}
+
+	fmt.Printf("%-8s %-*s %4s %4s %-*s %s\n", "event_id", sessW, "session_id", "seq", "exit", cwdW, "cwd", "cmd")
+	fmt.Println(strings.Repeat("-", sep))
+
+	var prevSess string
+	for _, r := range rows {
+		if prevSess != "" && prevSess != r.sessionID {
+			fmt.Println()
 		}
-		fmt.Printf("%-8d %-24s %4d %4s %-40s %s\n", eventID, sessionID, seq, exit, cwd, cmd)
+		prevSess = r.sessionID
+
+		exit := "-"
+		if r.exitCode != nil {
+			exit = fmt.Sprintf("%d", *r.exitCode)
+		}
+		cwdNorm := cmdutil.NormalizePath(r.cwd)
+		cwdShow := cmdutil.TruncateRight(cwdNorm, cwdW)
+		cmdShow := cmdutil.TruncateRight(r.cmd, cmdW)
+		fmt.Printf("%-8d %-*s %4d %4s %-*s %s\n", r.eventID, sessW, r.sessionID, r.seq, exit, cwdW, cwdShow, cmdShow)
 	}
 }
 
@@ -1046,8 +1331,8 @@ func argsHasHelp(args []string) bool {
 func isKnownCommand(cmd string) bool {
 	known := map[string]bool{
 		"status": true, "pause": true, "resume": true, "last": true, "dump": true,
-		"find": true, "attach": true, "query": true, "import": true, "pin": true,
-		"forget": true, "export": true, "sync": true,
+		"debug": true, "find": true, "attach": true, "query": true, "import": true,
+		"pin": true, "forget": true, "export": true, "sync": true,
 	}
 	return known[cmd]
 }
@@ -1064,6 +1349,7 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  last      last session summary, failure context")
 	fmt.Fprintln(w, "  find      full-text search over commands")
 	fmt.Fprintln(w, "  dump      last 20 events (debug)")
+	fmt.Fprintln(w, "  debug     diagnostics: daemon PID, spool, DB event count")
 	fmt.Fprintln(w, "  attach    link artifact to session")
 	fmt.Fprintln(w, "  query     evidence-backed search (optional Ollama)")
 	fmt.Fprintln(w, "  import    import shell history file")
@@ -1102,12 +1388,17 @@ var helpRegistry = map[string]func(io.Writer){
 		fmt.Fprintln(w, "Show last session summary with failure context. --raw-time shows epoch seconds.")
 	},
 	"import": func(w io.Writer) {
-		fmt.Fprintln(w, "hx import: usage: hx import --file <path> [--host label] [--shell zsh|bash|auto]")
+		fmt.Fprintln(w, "hx import: usage: hx import --file <path> [--host label] [--shell zsh|bash|auto] [--force]")
 		fmt.Fprintln(w, "  Import shell history. Idempotent; duplicates skipped.")
+		fmt.Fprintln(w, "  Safeguard: blocks .zshrc/.bashrc/.profile (use ~/.zsh_history or ~/.bash_history). --force to override.")
 	},
 	"query": func(w io.Writer) {
-		fmt.Fprintln(w, "hx query: usage: hx query \"<question>\" [--no-llm]   OR   hx query --file <path>")
+		fmt.Fprintln(w, "hx query: usage: hx query \"<question>\" [--no-llm] [--compact|--wide] [--no-self] [--no-import]   OR   hx query --file <path>")
 		fmt.Fprintln(w, "  Evidence-backed search. --no-llm skips Ollama summary.")
+		fmt.Fprintln(w, "  --compact     compact output (default): id, when, exit, cwd, cmd")
+		fmt.Fprintln(w, "  --wide        full columns including session_id, seq")
+		fmt.Fprintln(w, "  --no-self     exclude hx / ./bin/hx commands")
+		fmt.Fprintln(w, "  --no-import   exclude import-* sessions")
 	},
 	"sync": func(w io.Writer) {
 		fmt.Fprintln(w, "hx sync: usage: hx sync <init|status|push|pull> [options]")
@@ -1142,8 +1433,15 @@ var helpRegistry = map[string]func(io.Writer){
 		fmt.Fprintln(w, "  Resume capturing.")
 	},
 	"dump": func(w io.Writer) {
-		fmt.Fprintln(w, "hx dump")
-		fmt.Fprintln(w, "  Print last 20 events (debug).")
+		fmt.Fprintln(w, "hx dump [--wide]")
+		fmt.Fprintln(w, "  Print last 20 events. Compact by default (id, exit, cwd, cmd); --wide for full columns.")
+		fmt.Fprintln(w, "  Sessions are separated by a blank line.")
+	},
+	"debug": func(w io.Writer) {
+		fmt.Fprintln(w, "hx debug")
+		fmt.Fprintln(w, "")
+		fmt.Fprintln(w, "  Run diagnostics: daemon PID validity, spool file (line count, mtime),")
+		fmt.Fprintln(w, "  DB event count and most recent timestamp.")
 	},
 }
 
@@ -1170,7 +1468,9 @@ func runCommand(cmd string, args []string) {
 	case "last":
 		cmdLast(args)
 	case "dump":
-		cmdDump()
+		cmdDump(args)
+	case "debug":
+		cmdDebug()
 	case "find":
 		cmdFind(args)
 	case "attach":

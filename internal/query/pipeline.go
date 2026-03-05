@@ -56,7 +56,7 @@ func ftsCandidates(conn *sql.DB, query string, limit int) ([]Candidate, error) {
 		escaped = "\"" + escaped + "\""
 	}
 	rows, err := conn.Query(`
-		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.cwd, COALESCE(c.cmd_text, '')
+		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.cwd, COALESCE(c.cmd_text, ''), e.started_at
 		FROM events_fts
 		JOIN events e ON e.event_id = events_fts.rowid
 		LEFT JOIN command_dict c ON e.cmd_id = c.cmd_id
@@ -73,7 +73,7 @@ func ftsCandidates(conn *sql.DB, query string, limit int) ([]Candidate, error) {
 
 func recentCandidates(conn *sql.DB, limit int) ([]Candidate, error) {
 	rows, err := conn.Query(`
-		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.cwd, COALESCE(c.cmd_text, '')
+		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.cwd, COALESCE(c.cmd_text, ''), e.started_at
 		FROM events e
 		LEFT JOIN command_dict c ON e.cmd_id = c.cmd_id
 		ORDER BY e.started_at DESC
@@ -91,7 +91,7 @@ func scanCandidates(rows *sql.Rows) ([]Candidate, error) {
 	for rows.Next() {
 		var c Candidate
 		var exitCode *int
-		if err := rows.Scan(&c.EventID, &c.SessionID, &c.Seq, &exitCode, &c.Cwd, &c.Cmd); err != nil {
+		if err := rows.Scan(&c.EventID, &c.SessionID, &c.Seq, &exitCode, &c.Cwd, &c.Cmd, &c.StartedAt); err != nil {
 			continue
 		}
 		if exitCode != nil {

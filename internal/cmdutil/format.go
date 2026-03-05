@@ -75,6 +75,11 @@ func TruncateRight(s string, max int) string {
 	return s[:max-len(ellipsis)] + ellipsis
 }
 
+// IsTerminal returns true if the file is a terminal (TTY).
+func IsTerminal(f *os.File) bool {
+	return term.IsTerminal(int(f.Fd()))
+}
+
 // TerminalWidth returns the terminal width in columns, or 80 if undetectable.
 func TerminalWidth() int {
 	w, _, err := term.GetSize(int(os.Stdout.Fd()))
@@ -97,6 +102,41 @@ func FormatTimestamp(epochSec float64, raw bool) string {
 	formatted := t.Format("2006-01-02 15:04:05")
 	ago := formatRelative(time.Since(t))
 	return fmt.Sprintf("%s (%s)", formatted, ago)
+}
+
+// FormatWhen returns a short "when" string for the when column: "3m ago", "2h ago", "5d ago",
+// or "2006-01-02" for older items. Returns "-" if epochSec is 0 or invalid.
+func FormatWhen(epochSec float64) string {
+	if epochSec <= 0 {
+		return "-"
+	}
+	t := time.Unix(int64(epochSec), 0)
+	d := time.Since(t)
+	if d < time.Minute {
+		return "just now"
+	}
+	if d < time.Hour {
+		m := int(d.Minutes())
+		if m == 1 {
+			return "1m ago"
+		}
+		return fmt.Sprintf("%dm ago", m)
+	}
+	if d < 24*time.Hour {
+		h := int(d.Hours())
+		if h == 1 {
+			return "1h ago"
+		}
+		return fmt.Sprintf("%dh ago", h)
+	}
+	if d < 30*24*time.Hour {
+		days := int(d.Hours() / 24)
+		if days == 1 {
+			return "1d ago"
+		}
+		return fmt.Sprintf("%dd ago", days)
+	}
+	return t.Format("2006-01-02")
 }
 
 func formatRelative(d time.Duration) string {

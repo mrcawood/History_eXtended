@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mrcawood/History_eXtended/internal/db"
+	"github.com/mrcawood/History_eXtended/internal/query"
 	"github.com/mrcawood/History_eXtended/internal/store"
 )
 
@@ -32,6 +34,25 @@ func TestIsSelfCmd(t *testing.T) {
 		if got != tt._isSelf {
 			t.Errorf("isSelfCmd(%q) = %v, want %v", tt.cmd, got, tt._isSelf)
 		}
+	}
+}
+
+func TestParseQueryArgs(t *testing.T) {
+	q, o := parseQueryArgs([]string{"make"})
+	if q != "make" || !o.compact || o.wide || o.noSelf || o.noImport {
+		t.Errorf("parseQueryArgs([make]) = %q %+v", q, o)
+	}
+	q, o = parseQueryArgs([]string{"--no-self", "build"})
+	if q != "build" || !o.noSelf {
+		t.Errorf("parseQueryArgs([--no-self build]) noSelf=%v", o.noSelf)
+	}
+	q, o = parseQueryArgs([]string{"--wide", "test"})
+	if q != "test" || !o.wide {
+		t.Errorf("parseQueryArgs([--wide test]) wide=%v", o.wide)
+	}
+	q, o = parseQueryArgs([]string{"--no-import", "deploy"})
+	if q != "deploy" || !o.noImport {
+		t.Errorf("parseQueryArgs([--no-import deploy]) noImport=%v", o.noImport)
 	}
 }
 
@@ -185,6 +206,17 @@ func TestHelpSync(t *testing.T) {
 	}
 }
 
+func TestDebugRuns(t *testing.T) {
+	out, code := runHx(t, "debug")
+	if code != 0 {
+		t.Errorf("hx debug exit=%d, want 0", code)
+	}
+	// Should report daemon, spool, db
+	if !strings.Contains(out, "daemon:") || !strings.Contains(out, "spool:") || !strings.Contains(out, "db:") {
+		t.Errorf("hx debug missing daemon/spool/db: %s", out)
+	}
+}
+
 func TestUnknownCommandHint(t *testing.T) {
 	out, code := runHx(t, "unknown")
 	if code == 0 {
@@ -192,6 +224,96 @@ func TestUnknownCommandHint(t *testing.T) {
 	}
 	if !strings.Contains(out, "hx --help") {
 		t.Errorf("unknown command should hint hx --help: %s", out)
+	}
+}
+
+func TestPrintQueryTableCompactFits80(t *testing.T) {
+	now := float64(time.Now().Unix())
+	candidates := []query.Candidate{
+		{EventID: 123, SessionID: "sess-1", Seq: 1, ExitCode: 0, Cwd: "/home/user/proj", Cmd: "make build", StartedAt: now},
+		{EventID: 124, SessionID: "sess-1", Seq: 2, ExitCode: 1, Cwd: "/home/user/proj", Cmd: "make test", StartedAt: now},
+	}
+	var buf bytes.Buffer
+	printQueryTable(candidates, false, 80, &buf)
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	for i, line := range lines {
+		if len(line) > 85 {
+			t.Errorf("line %d length %d > 85: %q", i+1, len(line), line)
+		}
+	}
+	out := buf.String()
+	if !strings.Contains(out, "ID") || !strings.Contains(out, "WHEN") || !strings.Contains(out, "CMD") {
+		t.Errorf("compact header missing id/when/cmd: %s", out)
+	}
+	if strings.Contains(out, "SESSION_ID") || strings.Contains(out, "SEQ") {
+		t.Errorf("compact should hide session_id and seq: %s", out)
+	}
+}
+
+func TestPrintQueryTableWideIncludesSessionAndSeq(t *testing.T) {
+	now := float64(time.Now().Unix())
+	candidates := []query.Candidate{
+		{EventID: 123, SessionID: "hx-12345-1", Seq: 7, ExitCode: 0, Cwd: "/x", Cmd: "make", StartedAt: now},
+	}
+	var buf bytes.Buffer
+	printQueryTable(candidates, true, 120, &buf)
+	out := buf.String()
+	if !strings.Contains(out, "SESSION_ID") || !strings.Contains(out, "SEQ") {
+		t.Errorf("wide mode should include session_id and seq: %s", out)
+	}
+	if !strings.Contains(out, "hx-12345-1") {
+		t.Errorf("wide mode should show session value: %s", out)
+	}
+}
+
+func TestPrintQueryTableNoSelfFilter(t *testing.T) {
+	// Unit test: isSelfCmd is used in cmdQueryByQuestion; verify isSelfCmd catches "hx query X"
+	if !isSelfCmd("hx query make") {
+		t.Error("isSelfCmd(hx query make) should be true")
+	}
+	if !isSelfCmd("./bin/hx query make") {
+		t.Error("isSelfCmd(./bin/hx query make) should be true")
+	}
+}
+
+func TestPrintQueryTableGoldenCompact(t *testing.T) {
+	// Golden-style test: compact output has stable structure (id, when, exit, cwd, cmd)
+	ts := float64(1700000000) // Fixed time for reproducible "when"
+	candidates := []query.Candidate{
+		{EventID: 42, SessionID: "sess-a", Seq: 1, ExitCode: 0, Cwd: "/tmp", Cmd: "make build", StartedAt: ts},
+	}
+	var buf bytes.Buffer
+	printQueryTable(candidates, false, 80, &buf)
+	out := buf.String()
+	// Must contain header row and data row
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected header, separator, and ≥1 data row; got %d lines", len(lines))
+	}
+	// Header: ID | WHEN | EXIT | CWD | CMD
+	if !strings.Contains(lines[0], "ID") || !strings.Contains(lines[0], "CMD") {
+		t.Errorf("header missing ID or CMD: %q", lines[0])
+	}
+	// Data: 42, make build
+	if !strings.Contains(out, "42") || !strings.Contains(out, "make build") {
+		t.Errorf("output missing event 42 or cmd: %s", out)
+	}
+}
+
+func TestPrintQueryTableCwdNormalization(t *testing.T) {
+	// printQueryTable uses cmdutil.NormalizePath; verify via internal/cmdutil tests if any.
+	// Here we just ensure the table renders without error when cwd has path-like content.
+	home, _ := os.UserHomeDir()
+	cwd := home + "/projects/History_eXtended"
+	now := float64(time.Now().Unix())
+	candidates := []query.Candidate{
+		{EventID: 1, Cwd: cwd, Cmd: "make", StartedAt: now},
+	}
+	var buf bytes.Buffer
+	printQueryTable(candidates, false, 80, &buf)
+	// Normalized path should show $HOME not the full path
+	if home != "" && strings.Contains(buf.String(), home) {
+		t.Errorf("cwd should be normalized (no raw home path): %s", buf.String())
 	}
 }
 

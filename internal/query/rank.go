@@ -13,6 +13,7 @@ type Candidate struct {
 	Cmd       string
 	Cwd       string
 	ExitCode  int
+	StartedAt float64 // Unix timestamp (0 = unknown, e.g. some imports)
 }
 
 // CosineSimilarity returns the cosine similarity between two L2-normalized vectors.
