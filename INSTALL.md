@@ -125,6 +125,7 @@ To force on Bash < 5 (unsupported, best-effort): set `HX_BASH_ALLOW_UNSUPPORTED=
 ## Search and sessions
 
 - **hx find \<text\>** — full-text search (FTS5). Returns matching events with session, seq, exit code, cwd.
+  - Use `--wide` for full columns; default is compact. Set `HX_FIND_DEFAULT=wide` to keep legacy output.
 - **hx last** — last session summary; highlights failures with 1–2 commands before/after.
 
 ---

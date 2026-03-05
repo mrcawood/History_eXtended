@@ -312,9 +312,13 @@ func isSelfCmd(cmd string) bool {
 
 func cmdFind(args []string) {
 	query, opts := parseFindArgs(args)
-	if query == "" {
+	if query == "" || query == "--help" || query == "-h" {
 		fmt.Fprintf(os.Stderr, "hx find: usage: hx find <text> [--compact|--wide] [--no-self] [--no-import]\n")
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "  Set HX_FIND_DEFAULT=wide to keep legacy output.\n")
+		if query == "" {
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 	conn, err := db.Open(dbPath())
 	if err != nil {
