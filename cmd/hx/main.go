@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mrcawood/History_eXtended/internal/artifact"
 	"github.com/mrcawood/History_eXtended/internal/blob"
+	"github.com/mrcawood/History_eXtended/internal/cmdutil"
 	"github.com/mrcawood/History_eXtended/internal/config"
 	"github.com/mrcawood/History_eXtended/internal/db"
 	"github.com/mrcawood/History_eXtended/internal/export"
@@ -118,10 +120,10 @@ func cmdStatus() {
 	fmt.Printf("hx status\n")
 	fmt.Printf("  capture: %s\n", capture)
 	fmt.Printf("  daemon:  %s\n", daemon)
-	fmt.Printf("  spool:   %s\n", spool)
-	fmt.Printf("  db:      %s\n", dbPath())
+	fmt.Printf("  spool:   %s\n", cmdutil.NormalizePath(spool))
+	fmt.Printf("  db:      %s\n", cmdutil.NormalizePath(dbPath()))
 	if eventsExist {
-		fmt.Printf("  events:  %s\n", eventsPath)
+		fmt.Printf("  events:  %s\n", cmdutil.NormalizePath(eventsPath))
 	}
 	cfg := getConfig()
 	if cfg != nil {
@@ -154,7 +156,14 @@ func cmdResume() {
 	fmt.Println("Capture resumed.")
 }
 
-func cmdLast() {
+func cmdLast(args []string) {
+	rawTime := false
+	for _, a := range args {
+		if a == "--raw-time" {
+			rawTime = true
+			break
+		}
+	}
 	conn, err := db.Open(dbPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hx last: %v\n", err)
@@ -172,7 +181,7 @@ func cmdLast() {
 	}
 	fmt.Printf("Session: %s\n", sessionID)
 	fmt.Printf("Host:    %s\n", host)
-	fmt.Printf("Started: %.0f\n", startedAt)
+	fmt.Printf("Started: %s\n", cmdutil.FormatTimestamp(startedAt, rawTime))
 	fmt.Printf("Events:  %d\n\n", len(events))
 	showSeq := collectShowSeqs(events)
 	printLastEvents(events, showSeq)
@@ -260,9 +269,51 @@ func printLastEvents(events []lastEvent, showSeq map[int]bool) {
 	}
 }
 
-func cmdFind(query string) {
+type findOpts struct {
+	wide      bool
+	compact   bool
+	noSelf    bool
+	noImport  bool
+}
+
+func parseFindArgs(args []string) (string, findOpts) {
+	var opts findOpts
+	var queryParts []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--wide":
+			opts.wide = true
+		case "--compact":
+			opts.compact = true
+		case "--no-self":
+			opts.noSelf = true
+		case "--no-import":
+			opts.noImport = true
+		default:
+			queryParts = append(queryParts, args[i])
+		}
+	}
+	query := strings.TrimSpace(strings.Join(queryParts, " "))
+	if !opts.wide && !opts.compact {
+		if os.Getenv("HX_FIND_DEFAULT") == "wide" {
+			opts.wide = true
+		} else {
+			opts.compact = true
+		}
+	}
+	return query, opts
+}
+
+func isSelfCmd(cmd string) bool {
+	cmd = strings.TrimSpace(cmd)
+	return cmd == "hx" || strings.HasPrefix(cmd, "hx ") ||
+		cmd == "./bin/hx" || strings.HasPrefix(cmd, "./bin/hx ")
+}
+
+func cmdFind(args []string) {
+	query, opts := parseFindArgs(args)
 	if query == "" {
-		fmt.Fprintf(os.Stderr, "hx find: usage: hx find <text>\n")
+		fmt.Fprintf(os.Stderr, "hx find: usage: hx find <text> [--compact|--wide] [--no-self] [--no-import]\n")
 		os.Exit(1)
 	}
 	conn, err := db.Open(dbPath())
@@ -277,50 +328,119 @@ func cmdFind(query string) {
 	if strings.Contains(escaped, " ") {
 		escaped = "\"" + escaped + "\""
 	}
-	rows, err := conn.Query(`
+
+	sqlQuery := `
 		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.cwd, COALESCE(c.cmd_text, '')
 		FROM events_fts
 		JOIN events e ON e.event_id = events_fts.rowid
 		LEFT JOIN command_dict c ON e.cmd_id = c.cmd_id
-		WHERE events_fts MATCH ?
-		ORDER BY e.started_at DESC
-		LIMIT 20
-	`, escaped)
+		WHERE events_fts MATCH ?`
+	queryArgs := []interface{}{escaped}
+	if opts.noImport {
+		sqlQuery += ` AND e.session_id NOT LIKE 'import-%'`
+	}
+	sqlQuery += ` ORDER BY e.started_at DESC LIMIT 100`
+
+	rows, err := conn.Query(sqlQuery, queryArgs...)
 	if err != nil {
-		// Fallback: events_fts may not exist yet
 		fmt.Fprintf(os.Stderr, "hx find: %v\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = rows.Close() }()
 
-	fmt.Printf("%-8s %-24s %4s %4s %-40s %s\n", "event_id", "session_id", "seq", "exit", "cwd", "cmd")
-	fmt.Println(strings.Repeat("-", 100))
-
-	n := 0
+	// Collect rows, apply --no-self filter, limit to 20
+	var results []findRow
 	for rows.Next() {
-		n++
-		var eventID int64
-		var sessionID string
-		var seq int
-		var exitCode *int
-		var cwd, cmd string
-		if err := rows.Scan(&eventID, &sessionID, &seq, &exitCode, &cwd, &cmd); err != nil {
+		var r findRow
+		if err := rows.Scan(&r.eventID, &r.sessionID, &r.seq, &r.exitCode, &r.cwd, &r.cmd); err != nil {
 			continue
 		}
-		exit := "-"
-		if exitCode != nil {
-			exit = fmt.Sprintf("%d", *exitCode)
+		if opts.noSelf && isSelfCmd(r.cmd) {
+			continue
 		}
-		if len(cmd) > 38 {
-			cmd = cmd[:35] + "..."
+		results = append(results, r)
+		if len(results) >= 20 {
+			break
 		}
-		if len(cwd) > 38 {
-			cwd = cwd[:35] + "..."
-		}
-		fmt.Printf("%-8d %-24s %4d %4s %-40s %s\n", eventID, sessionID, seq, exit, cwd, cmd)
 	}
-	if n == 0 {
+
+	tw := cmdutil.TerminalWidth()
+	w := os.Stdout
+	if opts.wide {
+		printFindWide(results, tw, w)
+	} else {
+		printFindCompact(results, tw, w)
+	}
+	if len(results) == 0 {
 		fmt.Println("(no matches)")
+	}
+}
+
+// findRow holds one hx find result row.
+type findRow struct {
+	eventID   int64
+	sessionID string
+	seq       int
+	exitCode  *int
+	cwd       string
+	cmd       string
+}
+
+func printFindCompact(rows []findRow, termWidth int, w io.Writer) {
+	idW, exitW := 8, 5
+	cwdW := 18
+	if termWidth < 80 {
+		cwdW = 14
+	}
+	cmdW := termWidth - idW - exitW - cwdW - 6
+	if cmdW < 10 {
+		cmdW = 10
+		cwdW = termWidth - idW - exitW - cmdW - 6
+		if cwdW < 8 {
+			cwdW = 8
+		}
+	}
+
+	fmt.Fprintf(w, "%-*s %-*s %-*s %s\n", idW, "id", exitW, "exit", cwdW, "cwd", "cmd")
+	fmt.Fprintln(w, strings.Repeat("-", termWidth))
+
+	for _, r := range rows {
+		exit := "-"
+		if r.exitCode != nil {
+			exit = fmt.Sprintf("%d", *r.exitCode)
+		}
+		cwdNorm := cmdutil.NormalizePath(r.cwd)
+		cwdShow := cmdutil.TruncateLeft(cwdNorm, cwdW)
+		cmdShow := cmdutil.TruncateRight(r.cmd, cmdW)
+		fmt.Fprintf(w, "%-*d %-*s %-*s %s\n", idW, r.eventID, exitW, exit, cwdW, cwdShow, cmdShow)
+	}
+}
+
+func printFindWide(rows []findRow, termWidth int, w io.Writer) {
+	sessW, cwdW := 24, 40
+	cmdW := 50
+	if termWidth > 80 {
+		cmdW = termWidth - 8 - sessW - 4 - 4 - cwdW - 6
+		if cmdW < 20 {
+			cmdW = 20
+		}
+	}
+	sep := termWidth
+	if sep < 100 {
+		sep = 100
+	}
+	fmt.Fprintf(w, "%-8s %-*s %4s %4s %-*s %s\n", "event_id", sessW, "session_id", "seq", "exit", cwdW, "cwd", "cmd")
+	fmt.Fprintln(w, strings.Repeat("-", sep))
+
+	for _, r := range rows {
+		exit := "-"
+		if r.exitCode != nil {
+			exit = fmt.Sprintf("%d", *r.exitCode)
+		}
+		cwdNorm := cmdutil.NormalizePath(r.cwd)
+		cwdShow := cmdutil.TruncateRight(cwdNorm, cwdW)
+		cmdShow := cmdutil.TruncateRight(r.cmd, cmdW)
+		fmt.Fprintf(w, "%-8d %-*s %4d %4s %-*s %s\n", r.eventID, sessW, r.sessionID, r.seq, exit, cwdW, cwdShow, cmdShow)
 	}
 }
 
@@ -898,15 +1018,11 @@ func runCommand(cmd string, args []string) {
 	case "resume":
 		cmdResume()
 	case "last":
-		cmdLast()
+		cmdLast(args)
 	case "dump":
 		cmdDump()
 	case "find":
-		if len(args) < 1 {
-			fmt.Fprintf(os.Stderr, "hx find: usage: hx find <text>\n")
-			os.Exit(1)
-		}
-		cmdFind(strings.Join(args, " "))
+		cmdFind(args)
 	case "attach":
 		cmdAttach(args)
 	case "query":
