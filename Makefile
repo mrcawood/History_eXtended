@@ -7,12 +7,37 @@ build:
 	go build -o bin/hx-emit ./cmd/hx-emit
 	go build -tags sqlite_fts5 -o bin/hxd ./cmd/hxd
 
+HX_LIB_DIR = $(HOME)/.local/lib/hx
+
 install: build
 	mkdir -p $(HOME)/.local/bin
-	cp bin/hx bin/hx-emit bin/hxd $(HOME)/.local/bin/
-	@echo "Installed hx, hx-emit, hxd to $(HOME)/.local/bin"
-	@echo "Add $(HOME)/.local/bin to PATH if needed."
-	@echo "Source src/hooks/hx.zsh from .zshrc to enable capture."
+	install -m 755 bin/hx bin/hx-emit bin/hxd $(HOME)/.local/bin/
+	mkdir -p $(HX_LIB_DIR)
+	install -m 644 src/hooks/hx.zsh src/hooks/bash/hx.bash $(HX_LIB_DIR)/
+	install -m 755 scripts/start-hxd-if-needed.sh $(HX_LIB_DIR)/
+	@echo ""
+	@echo "========================================"
+	@echo "  Installed to $(HOME)/.local/bin"
+	@echo "  Hooks to $(HX_LIB_DIR)"
+	@echo "----------------------------------------"
+	@if [ -f "$${XDG_DATA_HOME:-$$HOME/.local/share}/hx/hxd.pid" ] 2>/dev/null; then \
+		pid=$$(cat "$${XDG_DATA_HOME:-$$HOME/.local/share}/hx/hxd.pid" 2>/dev/null); \
+		if kill -0 "$$pid" 2>/dev/null; then \
+			echo "  • Restarting hxd (pid $$pid) to use new binary..."; \
+			kill "$$pid" 2>/dev/null; \
+			for i in 1 2 3 4 5; do kill -0 "$$pid" 2>/dev/null || break; sleep 1; done; \
+			if kill -0 "$$pid" 2>/dev/null; then \
+				echo "  • WARN: hxd did not exit; run 'kill -9 $$pid' if needed"; \
+			elif [ -x "$(HOME)/.local/bin/hxd" ]; then \
+				"$(HOME)/.local/bin/hxd" & \
+				echo "  • hxd restarted."; \
+			fi; \
+		fi; \
+	fi
+	@sh "$(CURDIR)/scripts/install-path.sh"
+	@sh "$(CURDIR)/scripts/install-hook.sh" "$(HX_LIB_DIR)"
+	@sh "$(CURDIR)/scripts/install-daemon.sh" "$(HX_LIB_DIR)"
+	@echo "========================================"
 
 test:
 	go test ./...

@@ -78,24 +78,19 @@ hxd &
 
 **Steps:**
 
-1. Build and install (see above). Start `hxd &`.
-2. Add to `.zshrc`:
+1. Build and install (see above). `make install` copies hooks to `~/.local/lib/hx/` and prompts for: PATH, hook source, start hxd now, and hxd auto-start on login.
+2. If you skipped the prompts: start `hxd &`, add to `.zshrc`:
 
 ```bash
 # hx terminal capture
-source /path/to/History_eXtended/src/hooks/hx.zsh
-```
-
-Or with repo at `~/projects/History_eXtended`:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-source ~/projects/History_eXtended/src/hooks/hx.zsh
+source ~/.local/lib/hx/hx.zsh
 ```
 
 **Important:** `hx-emit` must be on PATH when the hooks run.
 
-**Verify:** New shell, run `echo hi`, `hx status`, `hx find hi`.
+**Daemon:** hxd ingests the spool into SQLite. Run `hxd &` or add `~/.local/lib/hx/start-hxd-if-needed.sh` to `.zprofile` for auto-start on login (the script avoids duplicate daemons).
+
+**Verify:** New shell, run `echo hi`, `hx status`, `hx find hi`. Run `hx debug` if capture isn't working.
 
 ---
 
@@ -107,13 +102,12 @@ source ~/projects/History_eXtended/src/hooks/hx.zsh
 
 **Steps:**
 
-1. Build and install. Start `hxd &`.
-2. Add to `.bashrc` or `.bash_profile`:
+1. Build and install. `make install` copies hooks and prompts for PATH, hook, daemon (start now + auto-start on login).
+2. If you skipped the prompts: start `hxd &`, add to `.bashrc` or `.bash_profile`:
 
 ```bash
 # hx terminal capture (Bash 5+)
-export PATH="$HOME/.local/bin:$PATH"
-source /path/to/History_eXtended/src/hooks/bash/hx.bash
+source ~/.local/lib/hx/hx.bash
 ```
 
 To force on Bash < 5 (unsupported, best-effort): set `HX_BASH_ALLOW_UNSUPPORTED=1` before sourcing.
@@ -147,6 +141,8 @@ To force on Bash < 5 (unsupported, best-effort): set `HX_BASH_ALLOW_UNSUPPORTED=
 Override with `HX_SPOOL_DIR`, `HX_DB_PATH`, `HX_BLOB_DIR`.
 
 **Help:** `hx --help` and `hx help <command>` (e.g. `hx help find`).
+
+**Troubleshooting:** Run `hx debug` to check daemon PID validity, spool file (line count, mtime), and DB event count. Use this when `hx last` shows "no events found"—it reveals whether capture, spool, or ingest is missing.
 
 ---
 
