@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mrcawood/History_eXtended/internal/cmdutil"
 	"github.com/mrcawood/History_eXtended/internal/db"
-	"github.com/mrcawood/History_eXtended/internal/query"
 	"github.com/mrcawood/History_eXtended/internal/store"
 )
 
 func TestIsSelfCmd(t *testing.T) {
 	tests := []struct {
-		cmd   string
+		cmd     string
 		_isSelf bool
 	}{
 		{"hx", true},
@@ -25,6 +25,9 @@ func TestIsSelfCmd(t *testing.T) {
 		{"  hx status", true},
 		{"./bin/hx", true},
 		{"./bin/hx find make", true},
+		{"COLUMNS=80 hx find make", true},
+		{"COLUMNS=80 hx query make", true},
+		{"foo | hx query make", true},
 		{"make", false},
 		{"hxedit", false},
 		{"/usr/bin/hx", false},
@@ -72,40 +75,63 @@ func TestParseFindArgs(t *testing.T) {
 }
 
 func TestPrintFindCompactFitsIn80Columns(t *testing.T) {
-	rows := []findRow{
-		{123, "sess-1", 1, intPtr(0), "/home/user/projects/foo", "make build"},
-		{124, "sess-1", 2, intPtr(1), "/home/user/projects/bar", "make test"},
+	rows := []cmdutil.Std1Row{
+		{EventID: 123, SessionID: "sess-1", Seq: 1, StartedAt: 1700000000, ExitCode: intPtr(0), Cwd: "/home/user/projects/foo", Cmd: "make build"},
+		{EventID: 124, SessionID: "sess-1", Seq: 2, StartedAt: 1700000000, ExitCode: intPtr(1), Cwd: "/home/user/projects/bar", Cmd: "make test"},
 	}
 	var buf bytes.Buffer
-	printFindCompact(rows, 80, &buf)
+	cmdutil.RenderStandard1(rows, "compact", 80, false, &buf)
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	for i, line := range lines {
 		if len(line) > 85 {
 			t.Errorf("line %d length %d > 85: %q", i+1, len(line), line)
 		}
 	}
-	// Compact header should have id, exit, cwd, cmd (no session_id, seq)
-	if !strings.Contains(lines[0], "id") || !strings.Contains(lines[0], "exit") ||
-		!strings.Contains(lines[0], "cwd") || !strings.Contains(lines[0], "cmd") {
+	// Compact: id, when, exit, cwd, cmd (no session_id, seq). No vertical bars.
+	if !strings.Contains(lines[0], "id") || !strings.Contains(lines[0], "cmd") ||
+		!strings.Contains(lines[0], "when") || !strings.Contains(lines[0], "exit") || !strings.Contains(lines[0], "cwd") {
 		t.Errorf("compact header missing expected columns: %q", lines[0])
 	}
 	if strings.Contains(lines[0], "session_id") || strings.Contains(lines[0], "seq") {
 		t.Errorf("compact should hide session_id and seq, got: %q", lines[0])
 	}
+	if strings.Contains(buf.String(), "|") || strings.Contains(buf.String(), "~") {
+		t.Errorf("Standard 1: no vertical bars or wrap markers: %s", buf.String())
+	}
 }
 
-func TestPrintFindWideIncludesSessionAndSeq(t *testing.T) {
-	rows := []findRow{
-		{123, "hx-12345-1", 1, intPtr(0), "/x", "make"},
+func TestPrintFindDebugIncludesSessionAndSeq(t *testing.T) {
+	// Wide does NOT include session_id; only --debug does
+	rows := []cmdutil.Std1Row{
+		{EventID: 123, SessionID: "hx-12345-1", Seq: 7, StartedAt: 1700000000, ExitCode: intPtr(0), Cwd: "/x", Cmd: "make"},
 	}
 	var buf bytes.Buffer
-	printFindWide(rows, 100, &buf)
+	cmdutil.RenderStandard1(rows, "debug", 120, false, &buf)
 	out := buf.String()
 	if !strings.Contains(out, "session_id") || !strings.Contains(out, "seq") {
-		t.Errorf("wide mode should include session_id and seq: %s", out)
+		t.Errorf("debug mode should include session_id and seq: %s", out)
 	}
-	if !strings.Contains(out, "hx-12345-1") || !strings.Contains(out, "1") {
-		t.Errorf("wide mode should show session and seq values: %s", out)
+	if !strings.Contains(out, "hx-12345-1") {
+		t.Errorf("debug mode should show session value: %s", out)
+	}
+}
+
+func TestPrintFindDebugFallsBackToCompactAt80Cols(t *testing.T) {
+	// At termWidth < 100, debug falls back to compact (avoids mid-string truncation)
+	rows := []cmdutil.Std1Row{
+		{EventID: 123, SessionID: "hx-12345-1", Seq: 7, StartedAt: 1700000000, ExitCode: intPtr(0), Cwd: "/x", Cmd: "make"},
+	}
+	var buf bytes.Buffer
+	cmdutil.RenderStandard1(rows, "debug", 80, false, &buf)
+	out := buf.String()
+	if strings.Contains(out, "session_id") || strings.Contains(out, "seq") {
+		t.Errorf("debug at 80 cols should fall back to compact (no session_id/seq): %s", out)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	for i, line := range lines {
+		if len(line) > 85 {
+			t.Errorf("line %d length %d > 85: %q", i+1, len(line), line)
+		}
 	}
 }
 
@@ -181,7 +207,7 @@ func TestHelpFind(t *testing.T) {
 	if code != 0 {
 		t.Errorf("hx help find exit=%d, want 0", code)
 	}
-	for _, s := range []string{"--wide", "--no-self", "--no-import", "HX_FIND_DEFAULT"} {
+	for _, s := range []string{"--wide", "--include-self", "--no-import", "compact"} {
 		if !strings.Contains(out, s) {
 			t.Errorf("hx help find missing %q: %s", s, out)
 		}
@@ -229,12 +255,13 @@ func TestUnknownCommandHint(t *testing.T) {
 
 func TestPrintQueryTableCompactFits80(t *testing.T) {
 	now := float64(time.Now().Unix())
-	candidates := []query.Candidate{
-		{EventID: 123, SessionID: "sess-1", Seq: 1, ExitCode: 0, Cwd: "/home/user/proj", Cmd: "make build", StartedAt: now},
-		{EventID: 124, SessionID: "sess-1", Seq: 2, ExitCode: 1, Cwd: "/home/user/proj", Cmd: "make test", StartedAt: now},
+	ec0, ec1 := 0, 1
+	rows := []cmdutil.Std1Row{
+		{EventID: 123, SessionID: "sess-1", Seq: 1, ExitCode: &ec0, Cwd: "/home/user/proj", Cmd: "make build", StartedAt: now},
+		{EventID: 124, SessionID: "sess-1", Seq: 2, ExitCode: &ec1, Cwd: "/home/user/proj", Cmd: "make test", StartedAt: now},
 	}
 	var buf bytes.Buffer
-	printQueryTable(candidates, false, 80, &buf)
+	cmdutil.RenderStandard1(rows, "compact", 80, false, &buf)
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	for i, line := range lines {
 		if len(line) > 85 {
@@ -242,27 +269,29 @@ func TestPrintQueryTableCompactFits80(t *testing.T) {
 		}
 	}
 	out := buf.String()
-	if !strings.Contains(out, "ID") || !strings.Contains(out, "WHEN") || !strings.Contains(out, "CMD") {
+	if !strings.Contains(out, "id") || !strings.Contains(out, "when") || !strings.Contains(out, "cmd") {
 		t.Errorf("compact header missing id/when/cmd: %s", out)
 	}
-	if strings.Contains(out, "SESSION_ID") || strings.Contains(out, "SEQ") {
+	if strings.Contains(out, "session_id") || strings.Contains(out, "seq") {
 		t.Errorf("compact should hide session_id and seq: %s", out)
 	}
 }
 
-func TestPrintQueryTableWideIncludesSessionAndSeq(t *testing.T) {
+func TestPrintQueryTableDebugIncludesSessionAndSeq(t *testing.T) {
+	// Wide does NOT include session_id; only debug does
 	now := float64(time.Now().Unix())
-	candidates := []query.Candidate{
-		{EventID: 123, SessionID: "hx-12345-1", Seq: 7, ExitCode: 0, Cwd: "/x", Cmd: "make", StartedAt: now},
+	ec := 0
+	rows := []cmdutil.Std1Row{
+		{EventID: 123, SessionID: "hx-12345-1", Seq: 7, ExitCode: &ec, Cwd: "/x", Cmd: "make", StartedAt: now},
 	}
 	var buf bytes.Buffer
-	printQueryTable(candidates, true, 120, &buf)
+	cmdutil.RenderStandard1(rows, "debug", 120, false, &buf)
 	out := buf.String()
-	if !strings.Contains(out, "SESSION_ID") || !strings.Contains(out, "SEQ") {
-		t.Errorf("wide mode should include session_id and seq: %s", out)
+	if !strings.Contains(out, "session_id") || !strings.Contains(out, "seq") {
+		t.Errorf("debug mode should include session_id and seq: %s", out)
 	}
 	if !strings.Contains(out, "hx-12345-1") {
-		t.Errorf("wide mode should show session value: %s", out)
+		t.Errorf("debug mode should show session value: %s", out)
 	}
 }
 
@@ -278,41 +307,41 @@ func TestPrintQueryTableNoSelfFilter(t *testing.T) {
 
 func TestPrintQueryTableGoldenCompact(t *testing.T) {
 	// Golden-style test: compact output has stable structure (id, when, exit, cwd, cmd)
-	ts := float64(1700000000) // Fixed time for reproducible "when"
-	candidates := []query.Candidate{
-		{EventID: 42, SessionID: "sess-a", Seq: 1, ExitCode: 0, Cwd: "/tmp", Cmd: "make build", StartedAt: ts},
+	ts := float64(1700000000)
+	ec := 0
+	rows := []cmdutil.Std1Row{
+		{EventID: 42, SessionID: "sess-a", Seq: 1, ExitCode: &ec, Cwd: "/tmp", Cmd: "make build", StartedAt: ts},
 	}
 	var buf bytes.Buffer
-	printQueryTable(candidates, false, 80, &buf)
+	cmdutil.RenderStandard1(rows, "compact", 80, false, &buf)
 	out := buf.String()
-	// Must contain header row and data row
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(lines) < 3 {
 		t.Fatalf("expected header, separator, and ≥1 data row; got %d lines", len(lines))
 	}
-	// Header: ID | WHEN | EXIT | CWD | CMD
-	if !strings.Contains(lines[0], "ID") || !strings.Contains(lines[0], "CMD") {
-		t.Errorf("header missing ID or CMD: %q", lines[0])
+	if !strings.Contains(lines[0], "id") || !strings.Contains(lines[0], "cmd") {
+		t.Errorf("header missing id or cmd: %q", lines[0])
 	}
-	// Data: 42, make build
 	if !strings.Contains(out, "42") || !strings.Contains(out, "make build") {
 		t.Errorf("output missing event 42 or cmd: %s", out)
 	}
 }
 
 func TestPrintQueryTableCwdNormalization(t *testing.T) {
-	// printQueryTable uses cmdutil.NormalizePath; verify via internal/cmdutil tests if any.
-	// Here we just ensure the table renders without error when cwd has path-like content.
+	// RenderStandard1 uses TruncateCwdTail which normalizes $HOME
 	home, _ := os.UserHomeDir()
+	if home == "" {
+		t.Skip("no home dir")
+	}
 	cwd := home + "/projects/History_eXtended"
 	now := float64(time.Now().Unix())
-	candidates := []query.Candidate{
-		{EventID: 1, Cwd: cwd, Cmd: "make", StartedAt: now},
+	ec := 0
+	rows := []cmdutil.Std1Row{
+		{EventID: 1, Cwd: cwd, Cmd: "make", StartedAt: now, ExitCode: &ec},
 	}
 	var buf bytes.Buffer
-	printQueryTable(candidates, false, 80, &buf)
-	// Normalized path should show $HOME not the full path
-	if home != "" && strings.Contains(buf.String(), home) {
+	cmdutil.RenderStandard1(rows, "compact", 80, false, &buf)
+	if strings.Contains(buf.String(), home) {
 		t.Errorf("cwd should be normalized (no raw home path): %s", buf.String())
 	}
 }

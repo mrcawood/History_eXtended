@@ -114,3 +114,60 @@ func TestTruncateRight(t *testing.T) {
 		}
 	}
 }
+
+func TestTruncateCwdTail_PathBoundary(t *testing.T) {
+	tests := []struct {
+		path   string
+		max    int
+		substr string // path boundary: should keep tail components, not mid-string cut
+	}{
+		{"/a/b/c/History_eXtended", 25, "History_eXtended"},
+		{"/a/b/c/History_eXtended", 30, "c/History_eXtended"},
+		{"/short", 20, "/short"},
+	}
+	for _, tt := range tests {
+		got := TruncateCwdTail(tt.path, tt.max)
+		if !strings.Contains(got, tt.substr) {
+			t.Errorf("TruncateCwdTail(%q, %d) = %q, want to contain %q (path boundary)", tt.path, tt.max, got, tt.substr)
+		}
+		if tt.path != "" && tt.max > 0 && len(got) > tt.max {
+			t.Errorf("TruncateCwdTail(%q, %d) = %q (len %d) exceeds max %d", tt.path, tt.max, got, len(got), tt.max)
+		}
+	}
+}
+
+func TestShortenPath_Powerlevel10kStyle(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		t.Skip("no home dir")
+	}
+	tests := []struct {
+		path   string
+		max    int
+		expect string // substring to check, or exact match
+		exact  bool
+	}{
+		// Force abbreviation: full path ~32 chars, max 25
+		{filepath.Join(home, "projects", "History_eXtended"), 25, "$HOME/p/History_eXtended", true},
+		// Middle dirs abbreviated: alpha->a, beta->b, gamma->g
+		{filepath.Join(home, "alpha", "beta", "gamma", "longdir"), 28, "$HOME/a/b/g/longdir", true},
+		// /usr/local/bin -> /usr/l/bin when max 12
+		{"/usr/local/bin", 12, "/usr/l/bin", true},
+		{"/single", 20, "/single", true},
+	}
+	for _, tt := range tests {
+		got := ShortenPath(tt.path, tt.max)
+		if tt.exact {
+			if got != tt.expect {
+				t.Errorf("ShortenPath(%q, %d) = %q, want %q", tt.path, tt.max, got, tt.expect)
+			}
+		} else {
+			if !strings.Contains(got, tt.expect) {
+				t.Errorf("ShortenPath(%q, %d) = %q, want to contain %q", tt.path, tt.max, got, tt.expect)
+			}
+		}
+		if len(got) > tt.max && tt.max > 0 {
+			t.Errorf("ShortenPath(%q, %d) = %q (len %d) exceeds max %d", tt.path, tt.max, got, len(got), tt.max)
+		}
+	}
+}

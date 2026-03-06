@@ -31,7 +31,6 @@ import (
 	"github.com/mrcawood/History_eXtended/internal/store"
 	"github.com/mrcawood/History_eXtended/internal/spool"
 	"github.com/mrcawood/History_eXtended/internal/sync"
-	"github.com/jedib0t/go-pretty/v6/table"
 )
 
 func getConfig() *config.Config {
@@ -362,10 +361,13 @@ func printLastEvents(events []lastEvent, showSeq map[int]bool) {
 }
 
 type findOpts struct {
-	wide      bool
-	compact   bool
-	noSelf    bool
-	noImport  bool
+	wide        bool
+	compact     bool
+	debug       bool
+	forceWide   bool
+	includeSelf bool // default false = exclude self; --include-self to show
+	noSelf      bool // backwards compat: same as default
+	noImport    bool
 }
 
 func parseFindArgs(args []string) (string, findOpts) {
@@ -377,6 +379,12 @@ func parseFindArgs(args []string) (string, findOpts) {
 			opts.wide = true
 		case "--compact":
 			opts.compact = true
+		case "--debug":
+			opts.debug = true
+		case "--force-wide":
+			opts.forceWide = true
+		case "--include-self":
+			opts.includeSelf = true
 		case "--no-self":
 			opts.noSelf = true
 		case "--no-import":
@@ -398,14 +406,26 @@ func parseFindArgs(args []string) (string, findOpts) {
 
 func isSelfCmd(cmd string) bool {
 	cmd = strings.TrimSpace(cmd)
-	return cmd == "hx" || strings.HasPrefix(cmd, "hx ") ||
-		cmd == "./bin/hx" || strings.HasPrefix(cmd, "./bin/hx ")
+	if cmd == "hx" || strings.HasPrefix(cmd, "hx ") {
+		return true
+	}
+	if cmd == "./bin/hx" || strings.HasPrefix(cmd, "./bin/hx ") {
+		return true
+	}
+	// Piped or env-prefixed: "COLUMNS=80 hx find make", "foo | hx query make"
+	if strings.Contains(cmd, "| hx ") || strings.Contains(cmd, "| hx") {
+		return true
+	}
+	if strings.Contains(cmd, " hx ") || strings.HasSuffix(cmd, " hx") {
+		return true
+	}
+	return false
 }
 
 func cmdFind(args []string) {
 	query, opts := parseFindArgs(args)
 	if query == "" {
-		fmt.Fprintf(os.Stderr, "hx find: usage: hx find <text> [--compact|--wide] [--no-self] [--no-import]\n")
+		fmt.Fprintf(os.Stderr, "hx find: usage: hx find <text> [--compact|--wide|--debug] [--include-self] [--no-import]\n")
 		fmt.Fprintf(os.Stderr, "  Set HX_FIND_DEFAULT=wide to keep legacy output. Run 'hx find --help' for details.\n")
 		os.Exit(1)
 	}
@@ -423,7 +443,7 @@ func cmdFind(args []string) {
 	}
 
 	sqlQuery := `
-		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.cwd, COALESCE(c.cmd_text, '')
+		SELECT e.event_id, e.session_id, e.seq, e.started_at, e.exit_code, e.cwd, COALESCE(c.cmd_text, '')
 		FROM events_fts
 		JOIN events e ON e.event_id = events_fts.rowid
 		LEFT JOIN command_dict c ON e.cmd_id = c.cmd_id
@@ -441,14 +461,15 @@ func cmdFind(args []string) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	// Collect rows, apply --no-self filter, limit to 20
+	// Collect rows; default exclude self (unless --include-self); --no-self for backwards compat
 	var results []findRow
 	for rows.Next() {
 		var r findRow
-		if err := rows.Scan(&r.eventID, &r.sessionID, &r.seq, &r.exitCode, &r.cwd, &r.cmd); err != nil {
+		if err := rows.Scan(&r.eventID, &r.sessionID, &r.seq, &r.startedAt, &r.exitCode, &r.cwd, &r.cmd); err != nil {
 			continue
 		}
-		if opts.noSelf && isSelfCmd(r.cmd) {
+		excludeSelf := !opts.includeSelf || opts.noSelf
+		if excludeSelf && isSelfCmd(r.cmd) {
 			continue
 		}
 		results = append(results, r)
@@ -458,12 +479,23 @@ func cmdFind(args []string) {
 	}
 
 	tw := cmdutil.TerminalWidth()
-	w := os.Stdout
-	if opts.wide {
-		printFindWide(results, tw, w)
-	} else {
-		printFindCompact(results, tw, w)
+	if cols := os.Getenv("COLUMNS"); cols != "" {
+		if n, err := strconv.Atoi(cols); err == nil && n > 0 {
+			tw = n
+		}
 	}
+	w := os.Stdout
+	mode := "compact"
+	if opts.debug {
+		mode = "debug"
+	} else if opts.wide {
+		mode = "wide"
+	}
+	std1Rows := make([]cmdutil.Std1Row, len(results))
+	for i, r := range results {
+		std1Rows[i] = cmdutil.Std1Row{EventID: r.eventID, SessionID: r.sessionID, Seq: r.seq, StartedAt: r.startedAt, ExitCode: r.exitCode, Cwd: r.cwd, Cmd: r.cmd}
+	}
+	cmdutil.RenderStandard1(std1Rows, mode, tw, opts.forceWide, w)
 	if len(results) == 0 {
 		fmt.Println("(no matches)")
 	}
@@ -474,67 +506,10 @@ type findRow struct {
 	eventID   int64
 	sessionID string
 	seq       int
+	startedAt float64
 	exitCode  *int
 	cwd       string
 	cmd       string
-}
-
-func printFindCompact(rows []findRow, termWidth int, w io.Writer) {
-	idW, exitW := 8, 5
-	cwdW := 18
-	if termWidth < 80 {
-		cwdW = 14
-	}
-	cmdW := termWidth - idW - exitW - cwdW - 6
-	if cmdW < 10 {
-		cmdW = 10
-		cwdW = termWidth - idW - exitW - cmdW - 6
-		if cwdW < 8 {
-			cwdW = 8
-		}
-	}
-
-	fmt.Fprintf(w, "%-*s %-*s %-*s %s\n", idW, "id", exitW, "exit", cwdW, "cwd", "cmd")
-	fmt.Fprintln(w, strings.Repeat("-", termWidth))
-
-	for _, r := range rows {
-		exit := "-"
-		if r.exitCode != nil {
-			exit = fmt.Sprintf("%d", *r.exitCode)
-		}
-		cwdNorm := cmdutil.NormalizePath(r.cwd)
-		cwdShow := cmdutil.TruncateLeft(cwdNorm, cwdW)
-		cmdShow := cmdutil.TruncateRight(r.cmd, cmdW)
-		fmt.Fprintf(w, "%-*d %-*s %-*s %s\n", idW, r.eventID, exitW, exit, cwdW, cwdShow, cmdShow)
-	}
-}
-
-func printFindWide(rows []findRow, termWidth int, w io.Writer) {
-	sessW, cwdW := 24, 40
-	cmdW := 50
-	if termWidth > 80 {
-		cmdW = termWidth - 8 - sessW - 4 - 4 - cwdW - 6
-		if cmdW < 20 {
-			cmdW = 20
-		}
-	}
-	sep := termWidth
-	if sep < 100 {
-		sep = 100
-	}
-	fmt.Fprintf(w, "%-8s %-*s %4s %4s %-*s %s\n", "event_id", sessW, "session_id", "seq", "exit", cwdW, "cwd", "cmd")
-	fmt.Fprintln(w, strings.Repeat("-", sep))
-
-	for _, r := range rows {
-		exit := "-"
-		if r.exitCode != nil {
-			exit = fmt.Sprintf("%d", *r.exitCode)
-		}
-		cwdNorm := cmdutil.NormalizePath(r.cwd)
-		cwdShow := cmdutil.TruncateRight(cwdNorm, cwdW)
-		cmdShow := cmdutil.TruncateRight(r.cmd, cmdW)
-		fmt.Fprintf(w, "%-8d %-*s %4d %4s %-*s %s\n", r.eventID, sessW, r.sessionID, r.seq, exit, cwdW, cwdShow, cmdShow)
-	}
 }
 
 func cmdAttach(args []string) {
@@ -587,12 +562,16 @@ func cmdAttach(args []string) {
 }
 
 type queryOpts struct {
-	filePath  string
-	noLLM     bool
-	wide      bool
-	compact   bool
-	noSelf    bool
-	noImport  bool
+	filePath    string
+	noLLM       bool
+	verbose     bool // show Ollama unavailable message (otherwise suppressed)
+	wide        bool
+	compact     bool
+	debug       bool
+	forceWide   bool
+	includeSelf bool
+	noSelf      bool // backwards compat: same as default (exclude self)
+	noImport    bool
 }
 
 func parseQueryArgs(args []string) (question string, opts queryOpts) {
@@ -606,10 +585,18 @@ func parseQueryArgs(args []string) (question string, opts queryOpts) {
 			}
 		case "--no-llm":
 			opts.noLLM = true
+		case "--verbose", "-v":
+			opts.verbose = true
 		case "--wide":
 			opts.wide = true
 		case "--compact":
 			opts.compact = true
+		case "--debug":
+			opts.debug = true
+		case "--force-wide":
+			opts.forceWide = true
+		case "--include-self":
+			opts.includeSelf = true
 		case "--no-self":
 			opts.noSelf = true
 		case "--no-import":
@@ -646,52 +633,6 @@ func cmdQuery(args []string) {
 	cmdQueryByQuestion(conn, question, opts)
 }
 
-func printQueryTable(candidates []query.Candidate, wide bool, termWidth int, w io.Writer) {
-	t := table.NewWriter()
-	t.SetOutputMirror(w)
-	t.Style().Options = table.OptionsNoBorders
-	t.SetAllowedRowLength(termWidth)
-
-	if wide {
-		t.AppendHeader(table.Row{"event_id", "session_id", "seq", "when", "exit", "cwd", "cmd"})
-		// Reserve ~90 chars for fixed cols; give remainder to cmd
-		cwdW := 22
-		cmdW := termWidth - 95
-		if cmdW < 12 {
-			cmdW = 12
-			cwdW = 16
-		}
-		for _, c := range candidates {
-			cwdNorm := cmdutil.NormalizePath(c.Cwd)
-			cwdShow := cmdutil.TruncateLeft(cwdNorm, cwdW)
-			cmdShow := cmdutil.TruncateRight(c.Cmd, cmdW)
-			t.AppendRow(table.Row{c.EventID, c.SessionID, c.Seq, cmdutil.FormatWhen(c.StartedAt), c.ExitCode, cwdShow, cmdShow})
-		}
-	} else {
-		// Compact: id, when, exit, cwd, cmd
-		t.AppendHeader(table.Row{"id", "when", "exit", "cwd", "cmd"})
-		idW, whenW, exitW := 8, 8, 5
-		cwdW := 18
-		if termWidth < 80 {
-			cwdW = 14
-		}
-		cmdW := termWidth - idW - whenW - exitW - cwdW - 8
-		if cmdW < 10 {
-			cmdW = 10
-			cwdW = termWidth - idW - whenW - exitW - cmdW - 8
-			if cwdW < 8 {
-				cwdW = 8
-			}
-		}
-		for _, c := range candidates {
-			cwdNorm := cmdutil.NormalizePath(c.Cwd)
-			cwdShow := cmdutil.TruncateLeft(cwdNorm, cwdW)
-			cmdShow := cmdutil.TruncateRight(c.Cmd, cmdW)
-			t.AppendRow(table.Row{c.EventID, cmdutil.FormatWhen(c.StartedAt), c.ExitCode, cwdShow, cmdShow})
-		}
-	}
-	t.Render()
-}
 
 func cmdQueryByFile(conn *sql.DB, filePath string) {
 	st := artifact.New(conn)
@@ -729,10 +670,10 @@ func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 		fmt.Fprintf(os.Stderr, "hx query: %v\n", err)
 		os.Exit(1)
 	}
-	// Filter by --no-self and --no-import
+	// Filter: default exclude self (unless --include-self); --no-import
 	var filtered []query.Candidate
 	for _, c := range candidates {
-		if opts.noSelf && isSelfCmd(c.Cmd) {
+		if !opts.includeSelf && isSelfCmd(c.Cmd) {
 			continue
 		}
 		if opts.noImport && strings.HasPrefix(c.SessionID, "import-") {
@@ -747,13 +688,31 @@ func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 		return
 	}
 
-	// Terminal width for table; use 120 when stdout is not a TTY (piped/redirected)
+	// Terminal width: COLUMNS env first, else TTY size, else 120 when piped
 	termWidth := cmdutil.TerminalWidth()
-	if !cmdutil.IsTerminal(os.Stdout) {
+	if cols := os.Getenv("COLUMNS"); cols != "" {
+		if n, err := strconv.Atoi(cols); err == nil && n > 0 {
+			termWidth = n
+		}
+	} else if !cmdutil.IsTerminal(os.Stdout) {
 		termWidth = 120
 	}
 	fmt.Printf("Results (%d):\n\n", len(candidates))
-	printQueryTable(candidates, opts.wide, termWidth, os.Stdout)
+	mode := "compact"
+	if opts.debug {
+		mode = "debug"
+	} else if opts.wide {
+		mode = "wide"
+	}
+	std1Rows := make([]cmdutil.Std1Row, len(candidates))
+	for i, c := range candidates {
+		ec := c.ExitCode
+		std1Rows[i] = cmdutil.Std1Row{
+			EventID: c.EventID, SessionID: c.SessionID, Seq: c.Seq,
+			StartedAt: c.StartedAt, ExitCode: &ec, Cwd: c.Cwd, Cmd: c.Cmd,
+		}
+	}
+	cmdutil.RenderStandard1(std1Rows, mode, termWidth, opts.forceWide, os.Stdout)
 	fmt.Println()
 
 	if !opts.noLLM && cfg.OllamaEnabled && ollama.Available(context.Background(), cfg.OllamaBaseURL) {
@@ -779,7 +738,9 @@ func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 
 		summary, err := ollama.Generate(context.Background(), cfg.OllamaBaseURL, cfg.OllamaChatModel, b.String())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "\nOllama unavailable, skipping summary: %v\n", err)
+			if opts.verbose {
+				fmt.Fprintf(os.Stderr, "\nOllama unavailable (model %s). Start with: ollama run %s\n", cfg.OllamaChatModel, cfg.OllamaChatModel)
+			}
 		} else if s := strings.TrimSpace(summary); s != "" {
 			fmt.Println()
 			fmt.Println("Summary:")
@@ -1374,13 +1335,15 @@ var helpRegistry = map[string]func(io.Writer){
 		fmt.Fprintln(w, "Show capture state, daemon health, and configured paths (spool, db, events).")
 	},
 	"find": func(w io.Writer) {
-		fmt.Fprintln(w, "hx find: usage: hx find <text> [--compact|--wide] [--no-self] [--no-import]")
+		fmt.Fprintln(w, "hx find: usage: hx find <text> [--compact|--wide|--debug] [--include-self] [--no-import]")
 		fmt.Fprintln(w, "  Full-text search over commands.")
-		fmt.Fprintln(w, "  --compact     compact output (default)")
-		fmt.Fprintln(w, "  --wide        full columns (event_id, session_id, seq, exit, cwd, cmd)")
-		fmt.Fprintln(w, "  --no-self     exclude hx / ./bin/hx commands")
-		fmt.Fprintln(w, "  --no-import   exclude import-* sessions")
-		fmt.Fprintln(w, "  Set HX_FIND_DEFAULT=wide to keep legacy output.")
+		fmt.Fprintln(w, "  --compact       compact (default): id, when, exit, cwd, cmd")
+		fmt.Fprintln(w, "  --wide          more fidelity: absolute time, wider cwd/cmd (no session_id)")
+		fmt.Fprintln(w, "  --debug         adds session_id, seq")
+		fmt.Fprintln(w, "  --include-self  show hx / ./bin/hx commands (default: excluded)")
+		fmt.Fprintln(w, "  --no-self       deprecated alias for default (exclude self)")
+		fmt.Fprintln(w, "  --no-import     exclude import-* sessions")
+		fmt.Fprintln(w, "  --force-wide    keep wide at COLUMNS<120 (else auto-fallback to compact)")
 	},
 	"last": func(w io.Writer) {
 		fmt.Fprintln(w, "hx last [--raw-time]")
@@ -1393,12 +1356,15 @@ var helpRegistry = map[string]func(io.Writer){
 		fmt.Fprintln(w, "  Safeguard: blocks .zshrc/.bashrc/.profile (use ~/.zsh_history or ~/.bash_history). --force to override.")
 	},
 	"query": func(w io.Writer) {
-		fmt.Fprintln(w, "hx query: usage: hx query \"<question>\" [--no-llm] [--compact|--wide] [--no-self] [--no-import]   OR   hx query --file <path>")
+		fmt.Fprintln(w, "hx query: usage: hx query \"<question>\" [--no-llm] [--verbose] [--compact|--wide|--debug] [--include-self] [--no-import]   OR   hx query --file <path>")
 		fmt.Fprintln(w, "  Evidence-backed search. --no-llm skips Ollama summary.")
-		fmt.Fprintln(w, "  --compact     compact output (default): id, when, exit, cwd, cmd")
-		fmt.Fprintln(w, "  --wide        full columns including session_id, seq")
-		fmt.Fprintln(w, "  --no-self     exclude hx / ./bin/hx commands")
-		fmt.Fprintln(w, "  --no-import   exclude import-* sessions")
+		fmt.Fprintln(w, "  --verbose       show Ollama unavailable hint (otherwise suppressed)")
+		fmt.Fprintln(w, "  --compact       compact (default): id, when, exit, cwd, cmd")
+		fmt.Fprintln(w, "  --wide          more fidelity: absolute time, wider cwd/cmd (no session_id)")
+		fmt.Fprintln(w, "  --debug         adds session_id, seq")
+		fmt.Fprintln(w, "  --include-self  show hx / ./bin/hx commands (default: excluded)")
+		fmt.Fprintln(w, "  --no-self       deprecated alias for default (exclude self)")
+		fmt.Fprintln(w, "  --no-import     exclude import-* sessions")
 	},
 	"sync": func(w io.Writer) {
 		fmt.Fprintln(w, "hx sync: usage: hx sync <init|status|push|pull> [options]")
