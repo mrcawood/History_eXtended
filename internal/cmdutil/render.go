@@ -74,8 +74,8 @@ func renderCompact(rows []Std1Row, termWidth int, w io.Writer) {
 	}
 	sepLen := idWidth + whenCompactWidth + exitWidth + cwdW + cmdW + 3
 
-	fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %s\n", idWidth, "id", whenCompactWidth, "when", exitWidth, "exit", cwdW, "cwd", "cmd")
-	fmt.Fprintln(w, strings.Repeat("-", sepLen))
+	_, _ = fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %s\n", idWidth, "id", whenCompactWidth, "when", exitWidth, "exit", cwdW, "cwd", "cmd")
+	_, _ = fmt.Fprintln(w, strings.Repeat("-", sepLen))
 
 	for _, r := range rows {
 		exit := "-"
@@ -84,7 +84,7 @@ func renderCompact(rows []Std1Row, termWidth int, w io.Writer) {
 		}
 		cwdShow := TruncateCwdTail(r.Cwd, cwdW)
 		cmdShow := TruncateRight(r.Cmd, cmdW)
-		fmt.Fprintf(w, "%-*d %-*s %-*s %-*s %s\n", idWidth, r.EventID, whenCompactWidth, FormatWhen(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
+		_, _ = fmt.Fprintf(w, "%-*d %-*s %-*s %-*s %s\n", idWidth, r.EventID, whenCompactWidth, FormatWhen(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
 	}
 }
 
@@ -106,8 +106,8 @@ func renderWide(rows []Std1Row, termWidth int, w io.Writer) {
 	}
 	sepLen := idWidth + whenAbsWidth + exitWidth + cwdW + cmdW + 3
 
-	fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %s\n", idWidth, "id", whenAbsWidth, "when", exitWidth, "exit", cwdW, "cwd", "cmd")
-	fmt.Fprintln(w, strings.Repeat("-", sepLen))
+	_, _ = fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %s\n", idWidth, "id", whenAbsWidth, "when", exitWidth, "exit", cwdW, "cwd", "cmd")
+	_, _ = fmt.Fprintln(w, strings.Repeat("-", sepLen))
 
 	for _, r := range rows {
 		exit := "-"
@@ -116,7 +116,7 @@ func renderWide(rows []Std1Row, termWidth int, w io.Writer) {
 		}
 		cwdShow := TruncateCwdTail(r.Cwd, cwdW)
 		cmdShow := TruncateRight(r.Cmd, cmdW)
-		fmt.Fprintf(w, "%-*d %-*s %-*s %-*s %s\n", idWidth, r.EventID, whenAbsWidth, FormatWhenAbs(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
+		_, _ = fmt.Fprintf(w, "%-*d %-*s %-*s %-*s %s\n", idWidth, r.EventID, whenAbsWidth, FormatWhenAbs(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
 	}
 }
 
@@ -134,8 +134,8 @@ func renderDebug(rows []Std1Row, termWidth int, w io.Writer) {
 	}
 	sepLen := idWidth + sessionIDWidth + seqWidth + whenAbsWidth + exitWidth + cwdW + cmdW + 4
 
-	fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %-*s %-*s %s\n", idWidth, "id", sessionIDWidth, "session_id", seqWidth, "seq", whenAbsWidth, "when", exitWidth, "exit", cwdW, "cwd", "cmd")
-	fmt.Fprintln(w, strings.Repeat("-", sepLen))
+	_, _ = fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %-*s %-*s %s\n", idWidth, "id", sessionIDWidth, "session_id", seqWidth, "seq", whenAbsWidth, "when", exitWidth, "exit", cwdW, "cwd", "cmd")
+	_, _ = fmt.Fprintln(w, strings.Repeat("-", sepLen))
 
 	for _, r := range rows {
 		exit := "-"
@@ -144,6 +144,6 @@ func renderDebug(rows []Std1Row, termWidth int, w io.Writer) {
 		}
 		cwdShow := TruncateCwdTail(r.Cwd, cwdW)
 		cmdShow := TruncateRight(r.Cmd, cmdW)
-		fmt.Fprintf(w, "%-*d %-*s %-*d %-*s %-*s %-*s %s\n", idWidth, r.EventID, sessionIDWidth, r.SessionID, seqWidth, r.Seq, whenAbsWidth, FormatWhenAbs(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
+		_, _ = fmt.Fprintf(w, "%-*d %-*s %-*d %-*s %-*s %-*s %s\n", idWidth, r.EventID, sessionIDWidth, r.SessionID, seqWidth, r.Seq, whenAbsWidth, FormatWhenAbs(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
 	}
 }

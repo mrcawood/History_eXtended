@@ -28,8 +28,8 @@ import (
 	"github.com/mrcawood/History_eXtended/internal/ollama"
 	"github.com/mrcawood/History_eXtended/internal/query"
 	"github.com/mrcawood/History_eXtended/internal/retention"
-	"github.com/mrcawood/History_eXtended/internal/store"
 	"github.com/mrcawood/History_eXtended/internal/spool"
+	"github.com/mrcawood/History_eXtended/internal/store"
 	"github.com/mrcawood/History_eXtended/internal/sync"
 )
 
@@ -218,7 +218,8 @@ func processComm(pid int) string {
 	if b, err := os.ReadFile(commPath); err == nil {
 		return strings.TrimSpace(string(b))
 	}
-	// Fallback: ps (Unix)
+	// Fallback: ps (Unix); pid from daemon config, not user input
+	// #nosec G204
 	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
 	if err != nil {
 		return "?"
@@ -632,7 +633,6 @@ func cmdQuery(args []string) {
 	}
 	cmdQueryByQuestion(conn, question, opts)
 }
-
 
 func cmdQueryByFile(conn *sql.DB, filePath string) {
 	st := artifact.New(conn)
@@ -1299,115 +1299,115 @@ func isKnownCommand(cmd string) bool {
 }
 
 func printRootHelp(w io.Writer) {
-	fmt.Fprintln(w, "hx: History eXtended - terminal flight recorder")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Usage: hx <command> [args...]")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Commands:")
-	fmt.Fprintln(w, "  status    capture state, daemon health, paths")
-	fmt.Fprintln(w, "  pause     stop capturing")
-	fmt.Fprintln(w, "  resume    resume capturing")
-	fmt.Fprintln(w, "  last      last session summary, failure context")
-	fmt.Fprintln(w, "  find      full-text search over commands")
-	fmt.Fprintln(w, "  dump      last 20 events (debug)")
-	fmt.Fprintln(w, "  debug     diagnostics: daemon PID, spool, DB event count")
-	fmt.Fprintln(w, "  attach    link artifact to session")
-	fmt.Fprintln(w, "  query     evidence-backed search (optional Ollama)")
-	fmt.Fprintln(w, "  import    import shell history file")
-	fmt.Fprintln(w, "  pin       pin session (exempt from retention)")
-	fmt.Fprintln(w, "  forget    delete events in time window")
-	fmt.Fprintln(w, "  export    export session as markdown")
-	fmt.Fprintln(w, "  sync      multi-device sync (init, status, push, pull)")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Getting started:")
-	fmt.Fprintln(w, "  Import-only:  hx import --file ~/.zsh_history  # then hx find <text>")
-	fmt.Fprintln(w, "  Live capture: source src/hooks/hx.zsh (zsh) or src/hooks/bash/hx.bash (bash)")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Note: Set HX_FIND_DEFAULT=wide for legacy find output.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Run 'hx help <command>' or 'hx <command> --help' for subcommand help.")
+	_, _ = fmt.Fprintln(w, "hx: History eXtended - terminal flight recorder")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Usage: hx <command> [args...]")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Commands:")
+	_, _ = fmt.Fprintln(w, "  status    capture state, daemon health, paths")
+	_, _ = fmt.Fprintln(w, "  pause     stop capturing")
+	_, _ = fmt.Fprintln(w, "  resume    resume capturing")
+	_, _ = fmt.Fprintln(w, "  last      last session summary, failure context")
+	_, _ = fmt.Fprintln(w, "  find      full-text search over commands")
+	_, _ = fmt.Fprintln(w, "  dump      last 20 events (debug)")
+	_, _ = fmt.Fprintln(w, "  debug     diagnostics: daemon PID, spool, DB event count")
+	_, _ = fmt.Fprintln(w, "  attach    link artifact to session")
+	_, _ = fmt.Fprintln(w, "  query     evidence-backed search (optional Ollama)")
+	_, _ = fmt.Fprintln(w, "  import    import shell history file")
+	_, _ = fmt.Fprintln(w, "  pin       pin session (exempt from retention)")
+	_, _ = fmt.Fprintln(w, "  forget    delete events in time window")
+	_, _ = fmt.Fprintln(w, "  export    export session as markdown")
+	_, _ = fmt.Fprintln(w, "  sync      multi-device sync (init, status, push, pull)")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Getting started:")
+	_, _ = fmt.Fprintln(w, "  Import-only:  hx import --file ~/.zsh_history  # then hx find <text>")
+	_, _ = fmt.Fprintln(w, "  Live capture: source src/hooks/hx.zsh (zsh) or src/hooks/bash/hx.bash (bash)")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Note: Set HX_FIND_DEFAULT=wide for legacy find output.")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Run 'hx help <command>' or 'hx <command> --help' for subcommand help.")
 }
 
 var helpRegistry = map[string]func(io.Writer){
 	"status": func(w io.Writer) {
-		fmt.Fprintln(w, "hx status")
-		fmt.Fprintln(w, "")
-		fmt.Fprintln(w, "Show capture state, daemon health, and configured paths (spool, db, events).")
+		_, _ = fmt.Fprintln(w, "hx status")
+		_, _ = fmt.Fprintln(w, "")
+		_, _ = fmt.Fprintln(w, "Show capture state, daemon health, and configured paths (spool, db, events).")
 	},
 	"find": func(w io.Writer) {
-		fmt.Fprintln(w, "hx find: usage: hx find <text> [--compact|--wide|--debug] [--include-self] [--no-import]")
-		fmt.Fprintln(w, "  Full-text search over commands.")
-		fmt.Fprintln(w, "  --compact       compact (default): id, when, exit, cwd, cmd")
-		fmt.Fprintln(w, "  --wide          more fidelity: absolute time, wider cwd/cmd (no session_id)")
-		fmt.Fprintln(w, "  --debug         adds session_id, seq")
-		fmt.Fprintln(w, "  --include-self  show hx / ./bin/hx commands (default: excluded)")
-		fmt.Fprintln(w, "  --no-self       deprecated alias for default (exclude self)")
-		fmt.Fprintln(w, "  --no-import     exclude import-* sessions")
-		fmt.Fprintln(w, "  --force-wide    keep wide at COLUMNS<120 (else auto-fallback to compact)")
+		_, _ = fmt.Fprintln(w, "hx find: usage: hx find <text> [--compact|--wide|--debug] [--include-self] [--no-import]")
+		_, _ = fmt.Fprintln(w, "  Full-text search over commands.")
+		_, _ = fmt.Fprintln(w, "  --compact       compact (default): id, when, exit, cwd, cmd")
+		_, _ = fmt.Fprintln(w, "  --wide          more fidelity: absolute time, wider cwd/cmd (no session_id)")
+		_, _ = fmt.Fprintln(w, "  --debug         adds session_id, seq")
+		_, _ = fmt.Fprintln(w, "  --include-self  show hx / ./bin/hx commands (default: excluded)")
+		_, _ = fmt.Fprintln(w, "  --no-self       deprecated alias for default (exclude self)")
+		_, _ = fmt.Fprintln(w, "  --no-import     exclude import-* sessions")
+		_, _ = fmt.Fprintln(w, "  --force-wide    keep wide at COLUMNS<120 (else auto-fallback to compact)")
 	},
 	"last": func(w io.Writer) {
-		fmt.Fprintln(w, "hx last [--raw-time]")
-		fmt.Fprintln(w, "")
-		fmt.Fprintln(w, "Show last session summary with failure context. --raw-time shows epoch seconds.")
+		_, _ = fmt.Fprintln(w, "hx last [--raw-time]")
+		_, _ = fmt.Fprintln(w, "")
+		_, _ = fmt.Fprintln(w, "Show last session summary with failure context. --raw-time shows epoch seconds.")
 	},
 	"import": func(w io.Writer) {
-		fmt.Fprintln(w, "hx import: usage: hx import --file <path> [--host label] [--shell zsh|bash|auto] [--force]")
-		fmt.Fprintln(w, "  Import shell history. Idempotent; duplicates skipped.")
-		fmt.Fprintln(w, "  Safeguard: blocks .zshrc/.bashrc/.profile (use ~/.zsh_history or ~/.bash_history). --force to override.")
+		_, _ = fmt.Fprintln(w, "hx import: usage: hx import --file <path> [--host label] [--shell zsh|bash|auto] [--force]")
+		_, _ = fmt.Fprintln(w, "  Import shell history. Idempotent; duplicates skipped.")
+		_, _ = fmt.Fprintln(w, "  Safeguard: blocks .zshrc/.bashrc/.profile (use ~/.zsh_history or ~/.bash_history). --force to override.")
 	},
 	"query": func(w io.Writer) {
-		fmt.Fprintln(w, "hx query: usage: hx query \"<question>\" [--no-llm] [--verbose] [--compact|--wide|--debug] [--include-self] [--no-import]   OR   hx query --file <path>")
-		fmt.Fprintln(w, "  Evidence-backed search. --no-llm skips Ollama summary.")
-		fmt.Fprintln(w, "  --verbose       show Ollama unavailable hint (otherwise suppressed)")
-		fmt.Fprintln(w, "  --compact       compact (default): id, when, exit, cwd, cmd")
-		fmt.Fprintln(w, "  --wide          more fidelity: absolute time, wider cwd/cmd (no session_id)")
-		fmt.Fprintln(w, "  --debug         adds session_id, seq")
-		fmt.Fprintln(w, "  --include-self  show hx / ./bin/hx commands (default: excluded)")
-		fmt.Fprintln(w, "  --no-self       deprecated alias for default (exclude self)")
-		fmt.Fprintln(w, "  --no-import     exclude import-* sessions")
+		_, _ = fmt.Fprintln(w, "hx query: usage: hx query \"<question>\" [--no-llm] [--verbose] [--compact|--wide|--debug] [--include-self] [--no-import]   OR   hx query --file <path>")
+		_, _ = fmt.Fprintln(w, "  Evidence-backed search. --no-llm skips Ollama summary.")
+		_, _ = fmt.Fprintln(w, "  --verbose       show Ollama unavailable hint (otherwise suppressed)")
+		_, _ = fmt.Fprintln(w, "  --compact       compact (default): id, when, exit, cwd, cmd")
+		_, _ = fmt.Fprintln(w, "  --wide          more fidelity: absolute time, wider cwd/cmd (no session_id)")
+		_, _ = fmt.Fprintln(w, "  --debug         adds session_id, seq")
+		_, _ = fmt.Fprintln(w, "  --include-self  show hx / ./bin/hx commands (default: excluded)")
+		_, _ = fmt.Fprintln(w, "  --no-self       deprecated alias for default (exclude self)")
+		_, _ = fmt.Fprintln(w, "  --no-import     exclude import-* sessions")
 	},
 	"sync": func(w io.Writer) {
-		fmt.Fprintln(w, "hx sync: usage: hx sync <init|status|push|pull> [options]")
-		fmt.Fprintln(w, "")
-		fmt.Fprintln(w, "  init --store folder:/path/to/HXSync [--vault-name NAME]")
-		fmt.Fprintln(w, "  status   show vault, pending events, imported segments")
-		fmt.Fprintln(w, "  push     publish local events to store")
-		fmt.Fprintln(w, "  pull     import from store into local DB")
+		_, _ = fmt.Fprintln(w, "hx sync: usage: hx sync <init|status|push|pull> [options]")
+		_, _ = fmt.Fprintln(w, "")
+		_, _ = fmt.Fprintln(w, "  init --store folder:/path/to/HXSync [--vault-name NAME]")
+		_, _ = fmt.Fprintln(w, "  status   show vault, pending events, imported segments")
+		_, _ = fmt.Fprintln(w, "  push     publish local events to store")
+		_, _ = fmt.Fprintln(w, "  pull     import from store into local DB")
 	},
 	"attach": func(w io.Writer) {
-		fmt.Fprintln(w, "hx attach: usage: hx attach --file <path> [--to last|session_id]")
-		fmt.Fprintln(w, "  Link artifact to session.")
+		_, _ = fmt.Fprintln(w, "hx attach: usage: hx attach --file <path> [--to last|session_id]")
+		_, _ = fmt.Fprintln(w, "  Link artifact to session.")
 	},
 	"export": func(w io.Writer) {
-		fmt.Fprintln(w, "hx export: usage: hx export [--session <SID>|--last] [--redacted]")
-		fmt.Fprintln(w, "  Export session as markdown.")
+		_, _ = fmt.Fprintln(w, "hx export: usage: hx export [--session <SID>|--last] [--redacted]")
+		_, _ = fmt.Fprintln(w, "  Export session as markdown.")
 	},
 	"forget": func(w io.Writer) {
-		fmt.Fprintln(w, "hx forget: usage: hx forget --since 15m|1h|24h|7d")
-		fmt.Fprintln(w, "  Delete events in time window.")
+		_, _ = fmt.Fprintln(w, "hx forget: usage: hx forget --since 15m|1h|24h|7d")
+		_, _ = fmt.Fprintln(w, "  Delete events in time window.")
 	},
 	"pin": func(w io.Writer) {
-		fmt.Fprintln(w, "hx pin: usage: hx pin --session <SID>   OR   hx pin --last")
-		fmt.Fprintln(w, "  Pin session (exempt from retention).")
+		_, _ = fmt.Fprintln(w, "hx pin: usage: hx pin --session <SID>   OR   hx pin --last")
+		_, _ = fmt.Fprintln(w, "  Pin session (exempt from retention).")
 	},
 	"pause": func(w io.Writer) {
-		fmt.Fprintln(w, "hx pause")
-		fmt.Fprintln(w, "  Stop capturing.")
+		_, _ = fmt.Fprintln(w, "hx pause")
+		_, _ = fmt.Fprintln(w, "  Stop capturing.")
 	},
 	"resume": func(w io.Writer) {
-		fmt.Fprintln(w, "hx resume")
-		fmt.Fprintln(w, "  Resume capturing.")
+		_, _ = fmt.Fprintln(w, "hx resume")
+		_, _ = fmt.Fprintln(w, "  Resume capturing.")
 	},
 	"dump": func(w io.Writer) {
-		fmt.Fprintln(w, "hx dump [--wide]")
-		fmt.Fprintln(w, "  Print last 20 events. Compact by default (id, exit, cwd, cmd); --wide for full columns.")
-		fmt.Fprintln(w, "  Sessions are separated by a blank line.")
+		_, _ = fmt.Fprintln(w, "hx dump [--wide]")
+		_, _ = fmt.Fprintln(w, "  Print last 20 events. Compact by default (id, exit, cwd, cmd); --wide for full columns.")
+		_, _ = fmt.Fprintln(w, "  Sessions are separated by a blank line.")
 	},
 	"debug": func(w io.Writer) {
-		fmt.Fprintln(w, "hx debug")
-		fmt.Fprintln(w, "")
-		fmt.Fprintln(w, "  Run diagnostics: daemon PID validity, spool file (line count, mtime),")
-		fmt.Fprintln(w, "  DB event count and most recent timestamp.")
+		_, _ = fmt.Fprintln(w, "hx debug")
+		_, _ = fmt.Fprintln(w, "")
+		_, _ = fmt.Fprintln(w, "  Run diagnostics: daemon PID validity, spool file (line count, mtime),")
+		_, _ = fmt.Fprintln(w, "  DB event count and most recent timestamp.")
 	},
 }
 
@@ -1416,11 +1416,7 @@ func printSubcommandHelp(w io.Writer, cmd string) {
 		fn(w)
 		return
 	}
-	fmt.Fprintf(w, "No help for %q. Run 'hx --help' for commands.\n", cmd)
-}
-
-func printUsage() {
-	printRootHelp(os.Stdout)
+	_, _ = fmt.Fprintf(w, "No help for %q. Run 'hx --help' for commands.\n", cmd)
 }
 
 func runCommand(cmd string, args []string) {
