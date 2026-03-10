@@ -573,6 +573,8 @@ type queryOpts struct {
 	includeSelf bool
 	noSelf      bool // backwards compat: same as default (exclude self)
 	noImport    bool
+	noFallback  bool
+	explain     bool
 }
 
 func parseQueryArgs(args []string) (question string, opts queryOpts) {
@@ -602,6 +604,10 @@ func parseQueryArgs(args []string) (question string, opts queryOpts) {
 			opts.noSelf = true
 		case "--no-import":
 			opts.noImport = true
+		case "--no-fallback":
+			opts.noFallback = true
+		case "--explain":
+			opts.explain = true
 		default:
 			questionParts = append(questionParts, args[i])
 		}
@@ -628,7 +634,7 @@ func cmdQuery(args []string) {
 		return
 	}
 	if strings.TrimSpace(question) == "" {
-		fmt.Fprintf(os.Stderr, "hx query: usage: hx query \"<question>\" [--no-llm] [--compact|--wide] [--no-self] [--no-import]   OR   hx query --file <path>\n")
+		fmt.Fprintf(os.Stderr, "hx query: usage: hx query \"<question>\" [--no-llm] [--no-fallback] [--explain] [--compact|--wide]   OR   hx query --file <path>\n")
 		os.Exit(1)
 	}
 	cmdQueryByQuestion(conn, question, opts)
@@ -665,11 +671,13 @@ func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 	if cfg == nil {
 		cfg = &config.Config{OllamaEnabled: true, OllamaBaseURL: "http://localhost:11434", OllamaEmbedModel: "nomic-embed-text", OllamaChatModel: "llama3.2"}
 	}
-	candidates, err := query.Retrieve(context.Background(), conn, question, cfg)
+	retrieveOpts := &query.RetrieveOpts{NoFallback: opts.noFallback}
+	result, err := query.Retrieve(context.Background(), conn, question, cfg, retrieveOpts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hx query: %v\n", err)
 		os.Exit(1)
 	}
+	candidates := result.Candidates
 	// Filter: default exclude self (unless --include-self); --no-import
 	var filtered []query.Candidate
 	for _, c := range candidates {
@@ -683,9 +691,31 @@ func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 	}
 	candidates = filtered
 
+	if opts.explain {
+		meta := result.Meta
+		fmt.Fprintf(os.Stderr, "keywords: %v\n", meta.Keywords)
+		fmt.Fprintf(os.Stderr, "fts_query: %q\n", meta.FTSQuery)
+		fmt.Fprintf(os.Stderr, "fts_candidates: %d\n", meta.FTSCount)
+		fmt.Fprintf(os.Stderr, "used_fallback: %v\n", meta.UsedFallback)
+		fmt.Fprintf(os.Stderr, "semantic_reranked: %v\n", meta.SemanticReranked)
+	}
+
 	if len(candidates) == 0 {
+		if opts.noFallback && result.Meta.FTSCount == 0 && len(result.Meta.Keywords) > 0 {
+			fmt.Fprintf(os.Stderr, "No matches for keywords: %s. Try: hx find <keyword>\n", strings.Join(result.Meta.Keywords, " "))
+		}
 		fmt.Println("No matching events found.")
 		return
+	}
+
+	if result.Meta.UsedFallback {
+		kws := strings.Join(result.Meta.Keywords, " ")
+		if kws == "" {
+			fmt.Fprintf(os.Stderr, "No searchable keywords extracted. Showing recent events.\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "No matches for keywords: %s. Showing recent events.\n", kws)
+			fmt.Fprintf(os.Stderr, "Try: hx find <keyword>\n")
+		}
 	}
 
 	// Terminal width: COLUMNS env first, else TTY size, else 120 when piped
@@ -1356,8 +1386,11 @@ var helpRegistry = map[string]func(io.Writer){
 		_, _ = fmt.Fprintln(w, "  Safeguard: blocks .zshrc/.bashrc/.profile (use ~/.zsh_history or ~/.bash_history). --force to override.")
 	},
 	"query": func(w io.Writer) {
-		_, _ = fmt.Fprintln(w, "hx query: usage: hx query \"<question>\" [--no-llm] [--verbose] [--compact|--wide|--debug] [--include-self] [--no-import]   OR   hx query --file <path>")
-		_, _ = fmt.Fprintln(w, "  Evidence-backed search. --no-llm skips Ollama summary.")
+		_, _ = fmt.Fprintln(w, "hx query: usage: hx query \"<question>\" [options]   OR   hx query --file <path>")
+		_, _ = fmt.Fprintln(w, "  Natural-language search. Extracts keywords (strips stopwords), searches FTS by OR across tokens.")
+		_, _ = fmt.Fprintln(w, "  --no-llm        skip Ollama summary")
+		_, _ = fmt.Fprintln(w, "  --no-fallback   when no FTS match, return empty (default: show recent events with notice)")
+		_, _ = fmt.Fprintln(w, "  --explain       print keywords, fts_query, fts_candidates, used_fallback, semantic_reranked")
 		_, _ = fmt.Fprintln(w, "  --verbose       show Ollama unavailable hint (otherwise suppressed)")
 		_, _ = fmt.Fprintln(w, "  --compact       compact (default): id, when, exit, cwd, cmd")
 		_, _ = fmt.Fprintln(w, "  --wide          more fidelity: absolute time, wider cwd/cmd (no session_id)")

@@ -91,7 +91,8 @@ See [INSTALL.md#live-capture-bash](INSTALL.md#live-capture-bash).
 - **`hx find`** — Literal text search when you know the words. Fast, exact FTS match.
   - Example: `hx find make build` — finds commands containing "make build"
   - Example: `hx find "git commit"` — phrase search
-- **`hx query`** — Evidence-backed retrieval when you describe what you want. Optional semantic ranking and LLM summary via Ollama.
+- **`hx query`** — Natural-language retrieval when you describe what you want. Extracts keywords from your question (strips stopwords, tokenizes), searches by OR across keywords, then optionally semantic reranks and LLM summary via Ollama.
+  - Example: `hx query "where is psge located?"` — extracts `psge`, finds events whose cwd/cmd contain it
   - Example: `hx query "commands that built the project"` — semantic + optional summary
   - Example: `hx query --file ./error.log` — find sessions with similar artifact
 
@@ -110,7 +111,7 @@ Use `hx --help` for usage and `hx help <command>` or `hx <command> --help` for s
 | `hx dump` | Last 20 events (debug) |
 | `hx debug` | Diagnostics: daemon PID, spool, DB |
 | `hx attach --file <path>` | Link artifact to last session |
-| `hx query "<question>" [--no-llm]` | Evidence-backed search; optional Ollama semantic + summary |
+| `hx query "<question>" [--no-llm] [--no-fallback] [--explain]` | Natural-language search; keyword FTS; optional Ollama |
 | `hx query --file <path>` | Find sessions with similar artifact |
 | `hx pin [--session SID\|--last]` | Pin session (exempt from retention) |
 | `hx forget --since 15m\|1h\|24h\|7d` | Delete events in time window |

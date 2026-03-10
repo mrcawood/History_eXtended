@@ -12,24 +12,64 @@ import (
 const candidateLimit = 50
 const resultLimit = 20
 
-// Retrieve finds evidence for a question: FTS candidates, optionally semantic re-rank.
-func Retrieve(ctx context.Context, conn *sql.DB, question string, cfg *config.Config) ([]Candidate, error) {
+// RetrieveOpts configures Retrieve behavior.
+type RetrieveOpts struct {
+	NoFallback bool
+}
+
+// RetrieveMeta holds explainability data for a retrieval (no sensitive content).
+type RetrieveMeta struct {
+	Keywords         []string
+	FTSQuery         string
+	FTSCount         int
+	UsedFallback     bool
+	SemanticReranked bool
+}
+
+// RetrieveResult is the result of Retrieve.
+type RetrieveResult struct {
+	Candidates []Candidate
+	Meta       RetrieveMeta
+}
+
+// Retrieve finds evidence for a question: keyword-based FTS candidates, optionally semantic re-rank.
+// If FTS returns 0 results and NoFallback is false, falls back to recent events and sets Meta.UsedFallback.
+func Retrieve(ctx context.Context, conn *sql.DB, question string, cfg *config.Config, opts *RetrieveOpts) (*RetrieveResult, error) {
+	if opts == nil {
+		opts = &RetrieveOpts{}
+	}
+	res := &RetrieveResult{Meta: RetrieveMeta{}}
 	if strings.TrimSpace(question) == "" {
-		return nil, nil
+		return res, nil
 	}
-	candidates, err := ftsCandidates(conn, question, candidateLimit)
-	if err != nil {
-		return nil, err
-	}
-	// Fallback: if FTS returns nothing, use recent events
-	if len(candidates) == 0 {
-		candidates, err = recentCandidates(conn, candidateLimit)
+
+	keywords := ExtractKeywords(question)
+	res.Meta.Keywords = keywords
+	ftsQuery := BuildFTSQuery(keywords)
+	res.Meta.FTSQuery = ftsQuery
+
+	var candidates []Candidate
+	var err error
+	if ftsQuery != "" {
+		candidates, err = ftsCandidatesWithQuery(conn, ftsQuery, candidateLimit)
 		if err != nil {
 			return nil, err
 		}
 	}
+	res.Meta.FTSCount = len(candidates)
+
 	if len(candidates) == 0 {
-		return nil, nil
+		if opts.NoFallback {
+			return res, nil
+		}
+		candidates, err = recentCandidates(conn, candidateLimit)
+		if err != nil {
+			return nil, err
+		}
+		res.Meta.UsedFallback = true
+	}
+	if len(candidates) == 0 {
+		return res, nil
 	}
 
 	if cfg != nil && cfg.OllamaEnabled && ollama.Available(ctx, cfg.OllamaBaseURL) {
@@ -38,22 +78,24 @@ func Retrieve(ctx context.Context, conn *sql.DB, question string, cfg *config.Co
 		}
 		ranked, err := RerankBySemantic(ctx, question, candidates, embedFn)
 		if err != nil {
-			return candidates[:min(resultLimit, len(candidates))], nil
+			res.Candidates = candidates[:min(resultLimit, len(candidates))]
+			return res, nil
 		}
 		candidates = ranked
+		res.Meta.SemanticReranked = true
 	}
 
 	limit := resultLimit
 	if len(candidates) < limit {
 		limit = len(candidates)
 	}
-	return candidates[:limit], nil
+	res.Candidates = candidates[:limit]
+	return res, nil
 }
 
-func ftsCandidates(conn *sql.DB, query string, limit int) ([]Candidate, error) {
-	escaped := strings.ReplaceAll(query, "\"", "\"\"")
-	if strings.Contains(escaped, " ") {
-		escaped = "\"" + escaped + "\""
+func ftsCandidatesWithQuery(conn *sql.DB, ftsQuery string, limit int) ([]Candidate, error) {
+	if ftsQuery == "" {
+		return nil, nil
 	}
 	rows, err := conn.Query(`
 		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.cwd, COALESCE(c.cmd_text, ''), e.started_at
@@ -63,7 +105,7 @@ func ftsCandidates(conn *sql.DB, query string, limit int) ([]Candidate, error) {
 		WHERE events_fts MATCH ?
 		ORDER BY e.started_at DESC
 		LIMIT ?
-	`, escaped, limit)
+	`, ftsQuery, limit)
 	if err != nil {
 		return nil, err
 	}
