@@ -666,6 +666,99 @@ func cmdQueryByFile(conn *sql.DB, filePath string) {
 	}
 }
 
+func filterQueryCandidates(candidates []query.Candidate, opts queryOpts) []query.Candidate {
+	var filtered []query.Candidate
+	for _, c := range candidates {
+		if !opts.includeSelf && isSelfCmd(c.Cmd) {
+			continue
+		}
+		if opts.noImport && strings.HasPrefix(c.SessionID, "import-") {
+			continue
+		}
+		filtered = append(filtered, c)
+	}
+	return filtered
+}
+
+func printQueryExplain(meta query.RetrieveMeta) {
+	fmt.Fprintf(os.Stderr, "keywords: %v\n", meta.Keywords)
+	fmt.Fprintf(os.Stderr, "fts_query: %q\n", meta.FTSQuery)
+	fmt.Fprintf(os.Stderr, "fts_candidates: %d\n", meta.FTSCount)
+	fmt.Fprintf(os.Stderr, "used_fallback: %v\n", meta.UsedFallback)
+	fmt.Fprintf(os.Stderr, "semantic_reranked: %v\n", meta.SemanticReranked)
+}
+
+func printQueryFallbackNotice(meta query.RetrieveMeta) {
+	kws := strings.Join(meta.Keywords, " ")
+	if kws == "" {
+		fmt.Fprintf(os.Stderr, "No searchable keywords extracted. Showing recent events.\n")
+		return
+	}
+	fmt.Fprintf(os.Stderr, "No matches for keywords: %s. Showing recent events.\n", kws)
+	fmt.Fprintf(os.Stderr, "Try: hx find <keyword>\n")
+}
+
+func queryTermWidth() int {
+	w := cmdutil.TerminalWidth()
+	if cols := os.Getenv("COLUMNS"); cols != "" {
+		if n, err := strconv.Atoi(cols); err == nil && n > 0 {
+			return n
+		}
+	}
+	if !cmdutil.IsTerminal(os.Stdout) {
+		return 120
+	}
+	return w
+}
+
+func queryRenderMode(opts queryOpts) string {
+	if opts.debug {
+		return "debug"
+	}
+	if opts.wide {
+		return "wide"
+	}
+	return "compact"
+}
+
+func printQueryLLMSummary(question string, candidates []query.Candidate, cfg *config.Config, opts queryOpts) {
+	if opts.noLLM || cfg == nil || !cfg.OllamaEnabled || !ollama.Available(context.Background(), cfg.OllamaBaseURL) {
+		return
+	}
+	topN := 5
+	if len(candidates) < topN {
+		topN = len(candidates)
+	}
+	var b strings.Builder
+	b.WriteString("Question: ")
+	b.WriteString(question)
+	b.WriteString("\n\nEvidence snippets (session_id, event_id, cmd):\n")
+	for i := 0; i < topN; i++ {
+		c := candidates[i]
+		b.WriteString("- ")
+		b.WriteString(c.SessionID)
+		b.WriteString(" event ")
+		b.WriteString(fmt.Sprintf("%d", c.EventID))
+		b.WriteString(": ")
+		b.WriteString(c.Cmd)
+		b.WriteString("\n")
+	}
+	b.WriteString("\nSummarize in 2-3 sentences what the user did, citing session/event IDs. Be concise.")
+
+	summary, err := ollama.Generate(context.Background(), cfg.OllamaBaseURL, cfg.OllamaChatModel, b.String())
+	if err != nil {
+		if opts.verbose {
+			fmt.Fprintf(os.Stderr, "\nOllama unavailable (model %s). Start with: ollama run %s\n", cfg.OllamaChatModel, cfg.OllamaChatModel)
+		}
+		return
+	}
+	if s := strings.TrimSpace(summary); s != "" {
+		fmt.Println()
+		fmt.Println("Summary:")
+		fmt.Println(s)
+	}
+}
+
 func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 	cfg := getConfig()
 	if cfg == nil {
@@ -677,27 +770,10 @@ func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 		fmt.Fprintf(os.Stderr, "hx query: %v\n", err)
 		os.Exit(1)
 	}
-	candidates := result.Candidates
-	// Filter: default exclude self (unless --include-self); --no-import
-	var filtered []query.Candidate
-	for _, c := range candidates {
-		if !opts.includeSelf && isSelfCmd(c.Cmd) {
-			continue
-		}
-		if opts.noImport && strings.HasPrefix(c.SessionID, "import-") {
-			continue
-		}
-		filtered = append(filtered, c)
-	}
-	candidates = filtered
+	candidates := filterQueryCandidates(result.Candidates, opts)
 
 	if opts.explain {
-		meta := result.Meta
-		fmt.Fprintf(os.Stderr, "keywords: %v\n", meta.Keywords)
-		fmt.Fprintf(os.Stderr, "fts_query: %q\n", meta.FTSQuery)
-		fmt.Fprintf(os.Stderr, "fts_candidates: %d\n", meta.FTSCount)
-		fmt.Fprintf(os.Stderr, "used_fallback: %v\n", meta.UsedFallback)
-		fmt.Fprintf(os.Stderr, "semantic_reranked: %v\n", meta.SemanticReranked)
+		printQueryExplain(result.Meta)
 	}
 
 	if len(candidates) == 0 {
@@ -709,31 +785,12 @@ func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 	}
 
 	if result.Meta.UsedFallback {
-		kws := strings.Join(result.Meta.Keywords, " ")
-		if kws == "" {
-			fmt.Fprintf(os.Stderr, "No searchable keywords extracted. Showing recent events.\n")
-		} else {
-			fmt.Fprintf(os.Stderr, "No matches for keywords: %s. Showing recent events.\n", kws)
-			fmt.Fprintf(os.Stderr, "Try: hx find <keyword>\n")
-		}
+		printQueryFallbackNotice(result.Meta)
 	}
 
-	// Terminal width: COLUMNS env first, else TTY size, else 120 when piped
-	termWidth := cmdutil.TerminalWidth()
-	if cols := os.Getenv("COLUMNS"); cols != "" {
-		if n, err := strconv.Atoi(cols); err == nil && n > 0 {
-			termWidth = n
-		}
-	} else if !cmdutil.IsTerminal(os.Stdout) {
-		termWidth = 120
-	}
+	termWidth := queryTermWidth()
 	fmt.Printf("Results (%d):\n\n", len(candidates))
-	mode := "compact"
-	if opts.debug {
-		mode = "debug"
-	} else if opts.wide {
-		mode = "wide"
-	}
+	mode := queryRenderMode(opts)
 	std1Rows := make([]cmdutil.Std1Row, len(candidates))
 	for i, c := range candidates {
 		ec := c.ExitCode
@@ -745,38 +802,7 @@ func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 	cmdutil.RenderStandard1(std1Rows, mode, termWidth, opts.forceWide, os.Stdout)
 	fmt.Println()
 
-	if !opts.noLLM && cfg.OllamaEnabled && ollama.Available(context.Background(), cfg.OllamaBaseURL) {
-		topN := 5
-		if len(candidates) < topN {
-			topN = len(candidates)
-		}
-		var b strings.Builder
-		b.WriteString("Question: ")
-		b.WriteString(question)
-		b.WriteString("\n\nEvidence snippets (session_id, event_id, cmd):\n")
-		for i := 0; i < topN; i++ {
-			c := candidates[i]
-			b.WriteString("- ")
-			b.WriteString(c.SessionID)
-			b.WriteString(" event ")
-			b.WriteString(fmt.Sprintf("%d", c.EventID))
-			b.WriteString(": ")
-			b.WriteString(c.Cmd)
-			b.WriteString("\n")
-		}
-		b.WriteString("\nSummarize in 2-3 sentences what the user did, citing session/event IDs. Be concise.")
-
-		summary, err := ollama.Generate(context.Background(), cfg.OllamaBaseURL, cfg.OllamaChatModel, b.String())
-		if err != nil {
-			if opts.verbose {
-				fmt.Fprintf(os.Stderr, "\nOllama unavailable (model %s). Start with: ollama run %s\n", cfg.OllamaChatModel, cfg.OllamaChatModel)
-			}
-		} else if s := strings.TrimSpace(summary); s != "" {
-			fmt.Println()
-			fmt.Println("Summary:")
-			fmt.Println(s)
-		}
-	}
+	printQueryLLMSummary(question, candidates, cfg, opts)
 }
 
 func isConfigFile(base string) bool {
