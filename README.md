@@ -91,7 +91,7 @@ See [INSTALL.md#live-capture-bash](INSTALL.md#live-capture-bash).
 - **`hx find`** — Literal text search when you know the words. Fast, exact FTS match.
   - Example: `hx find make build` — finds commands containing "make build"
   - Example: `hx find "git commit"` — phrase search
-- **`hx query`** — Natural-language retrieval when you describe what you want. Extracts keywords from your question (strips stopwords, tokenizes), searches by OR across keywords, then optionally semantic reranks and LLM summary via Ollama.
+- **`hx query`** — Natural-language retrieval when you describe what you want. Extracts keywords from your question (strips stopwords, tokenizes), searches by OR across keywords, then optionally semantic reranks and LLM summary via Ollama. When no keywords match, shows recent events; use `--no-fallback` to disable. Use `--explain` to see extracted keywords and FTS details.
   - Example: `hx query "where is psge located?"` — extracts `psge`, finds events whose cwd/cmd contain it
   - Example: `hx query "commands that built the project"` — semantic + optional summary
   - Example: `hx query --file ./error.log` — find sessions with similar artifact
