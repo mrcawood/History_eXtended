@@ -369,6 +369,7 @@ type findOpts struct {
 	includeSelf bool // default false = exclude self; --include-self to show
 	noSelf      bool // backwards compat: same as default
 	noImport    bool
+	width       int // --width flag
 }
 
 func parseFindArgs(args []string) (string, findOpts) {
@@ -390,6 +391,13 @@ func parseFindArgs(args []string) (string, findOpts) {
 			opts.noSelf = true
 		case "--no-import":
 			opts.noImport = true
+		case "--width", "-w":
+			if i+1 < len(args) {
+				if width, err := strconv.Atoi(args[i+1]); err == nil && width > 0 {
+					opts.width = width
+					i++
+				}
+			}
 		default:
 			queryParts = append(queryParts, args[i])
 		}
@@ -403,6 +411,10 @@ func parseFindArgs(args []string) (string, findOpts) {
 		}
 	}
 	return query, opts
+}
+
+func findTermWidth(opts findOpts) int {
+	return cmdutil.RenderWidth(os.Stdout, opts.width)
 }
 
 func isSelfCmd(cmd string) bool {
@@ -479,7 +491,7 @@ func cmdFind(args []string) {
 		}
 	}
 
-	tw := cmdutil.TerminalWidth()
+	tw := findTermWidth(opts)
 	if cols := os.Getenv("COLUMNS"); cols != "" {
 		if n, err := strconv.Atoi(cols); err == nil && n > 0 {
 			tw = n
@@ -575,9 +587,11 @@ type queryOpts struct {
 	noImport    bool
 	noFallback  bool
 	explain     bool
+	width       int // --width flag
 }
 
-func parseQueryArgs(args []string) (question string, opts queryOpts) {
+func parseQueryArgs(args []string) (string, queryOpts) {
+	opts := queryOpts{}
 	var questionParts []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -588,8 +602,6 @@ func parseQueryArgs(args []string) (question string, opts queryOpts) {
 			}
 		case "--no-llm":
 			opts.noLLM = true
-		case "--verbose", "-v":
-			opts.verbose = true
 		case "--wide":
 			opts.wide = true
 		case "--compact":
@@ -608,11 +620,18 @@ func parseQueryArgs(args []string) (question string, opts queryOpts) {
 			opts.noFallback = true
 		case "--explain":
 			opts.explain = true
+		case "--width", "-w":
+			if i+1 < len(args) {
+				if width, err := strconv.Atoi(args[i+1]); err == nil && width > 0 {
+					opts.width = width
+					i++
+				}
+			}
 		default:
 			questionParts = append(questionParts, args[i])
 		}
 	}
-	question = strings.Join(questionParts, " ")
+	question := strings.Join(questionParts, " ")
 	if !opts.wide && !opts.compact {
 		opts.compact = true
 	}
@@ -698,17 +717,8 @@ func printQueryFallbackNotice(meta query.RetrieveMeta) {
 	fmt.Fprintf(os.Stderr, "Try: hx find <keyword>\n")
 }
 
-func queryTermWidth() int {
-	w := cmdutil.TerminalWidth()
-	if cols := os.Getenv("COLUMNS"); cols != "" {
-		if n, err := strconv.Atoi(cols); err == nil && n > 0 {
-			return n
-		}
-	}
-	if !cmdutil.IsTerminal(os.Stdout) {
-		return 120
-	}
-	return w
+func queryTermWidth(opts queryOpts) int {
+	return cmdutil.RenderWidth(os.Stdout, opts.width)
 }
 
 func queryRenderMode(opts queryOpts) string {
@@ -788,7 +798,7 @@ func cmdQueryByQuestion(conn *sql.DB, question string, opts queryOpts) {
 		printQueryFallbackNotice(result.Meta)
 	}
 
-	termWidth := queryTermWidth()
+	termWidth := queryTermWidth(opts)
 	fmt.Printf("Results (%d):\n\n", len(candidates))
 	mode := queryRenderMode(opts)
 	std1Rows := make([]cmdutil.Std1Row, len(candidates))
@@ -1068,7 +1078,7 @@ func cmdDump(args []string) {
 		dumpRows = append(dumpRows, r)
 	}
 
-	tw := cmdutil.TerminalWidth()
+	tw := cmdutil.RenderWidth(os.Stdout, 0)
 	if wide {
 		printDumpWide(dumpRows, tw)
 	} else {
@@ -1391,7 +1401,7 @@ var helpRegistry = map[string]func(io.Writer){
 		_, _ = fmt.Fprintln(w, "Show capture state, daemon health, and configured paths (spool, db, events).")
 	},
 	"find": func(w io.Writer) {
-		_, _ = fmt.Fprintln(w, "hx find: usage: hx find <text> [--compact|--wide|--debug] [--include-self] [--no-import]")
+		_, _ = fmt.Fprintln(w, "hx find: usage: hx find <text> [--compact|--wide|--debug] [--include-self] [--no-import] [--width <n>]")
 		_, _ = fmt.Fprintln(w, "  Full-text search over commands.")
 		_, _ = fmt.Fprintln(w, "  --compact       compact (default): id, when, exit, cwd, cmd")
 		_, _ = fmt.Fprintln(w, "  --wide          more fidelity: absolute time, wider cwd/cmd (no session_id)")
@@ -1400,6 +1410,7 @@ var helpRegistry = map[string]func(io.Writer){
 		_, _ = fmt.Fprintln(w, "  --no-self       deprecated alias for default (exclude self)")
 		_, _ = fmt.Fprintln(w, "  --no-import     exclude import-* sessions")
 		_, _ = fmt.Fprintln(w, "  --force-wide    keep wide at COLUMNS<120 (else auto-fallback to compact)")
+		_, _ = fmt.Fprintln(w, "  --width <n>     set output width to n columns (overrides HX_WIDTH and COLUMNS)")
 	},
 	"last": func(w io.Writer) {
 		_, _ = fmt.Fprintln(w, "hx last [--raw-time]")
@@ -1424,6 +1435,7 @@ var helpRegistry = map[string]func(io.Writer){
 		_, _ = fmt.Fprintln(w, "  --include-self  show hx / ./bin/hx commands (default: excluded)")
 		_, _ = fmt.Fprintln(w, "  --no-self       deprecated alias for default (exclude self)")
 		_, _ = fmt.Fprintln(w, "  --no-import     exclude import-* sessions")
+		_, _ = fmt.Fprintln(w, "  --width <n>     set output width to n columns (overrides HX_WIDTH and COLUMNS)")
 	},
 	"sync": func(w io.Writer) {
 		_, _ = fmt.Fprintln(w, "hx sync: usage: hx sync <init|status|push|pull> [options]")

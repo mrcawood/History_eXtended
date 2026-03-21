@@ -72,10 +72,34 @@ func renderCompact(rows []Std1Row, termWidth int, w io.Writer) {
 			cwdW = 8
 		}
 	}
-	sepLen := idWidth + whenCompactWidth + exitWidth + cwdW + cmdW + 3
 
-	_, _ = fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %s\n", idWidth, "id", whenCompactWidth, "when", exitWidth, "exit", cwdW, "cwd", "cmd")
-	_, _ = fmt.Fprintln(w, strings.Repeat("-", sepLen))
+	// Ensure we have enough space for headers
+	minHeaderWidth := idWidth + whenCompactWidth + exitWidth + 3 + 3 + 3 // "cwd" + "cmd" + spaces
+	if termWidth < minHeaderWidth {
+		// Not enough space, use minimal layout
+		cwdW = 3
+		cmdW = termWidth - idWidth - whenCompactWidth - exitWidth - 3 - 3 - 1
+		if cmdW < 3 {
+			cmdW = 3
+		}
+	}
+
+	sepLen := idWidth + whenCompactWidth + exitWidth + cwdW + cmdW + 3
+	if sepLen > termWidth {
+		sepLen = termWidth
+	}
+
+	header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s", idWidth, "id", whenCompactWidth, "when", exitWidth, "exit", cwdW, "cwd", cmdW, "cmd")
+	for len([]rune(header)) > termWidth && cmdW > 3 {
+		cmdW--
+		header = fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s", idWidth, "id", whenCompactWidth, "when", exitWidth, "exit", cwdW, "cwd", cmdW, "cmd")
+	}
+	header = clampLine(header, termWidth)
+	_, _ = fmt.Fprintln(w, header)
+
+	// Separator should match header length exactly
+	separator := strings.Repeat("-", len(header))
+	_, _ = fmt.Fprintln(w, separator)
 
 	for _, r := range rows {
 		exit := "-"
@@ -84,7 +108,13 @@ func renderCompact(rows []Std1Row, termWidth int, w io.Writer) {
 		}
 		cwdShow := TruncateCwdTail(r.Cwd, cwdW)
 		cmdShow := TruncateRight(r.Cmd, cmdW)
-		_, _ = fmt.Fprintf(w, "%-*d %-*s %-*s %-*s %s\n", idWidth, r.EventID, whenCompactWidth, FormatWhen(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
+
+		// Format the line
+		line := fmt.Sprintf("%-*d %-*s %-*s %-*s %s", idWidth, r.EventID, whenCompactWidth, FormatWhen(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
+
+		// Clamp line to prevent overflow - operate on runes, not bytes
+		line = clampLine(line, termWidth)
+		_, _ = fmt.Fprintln(w, line)
 	}
 }
 
@@ -105,9 +135,17 @@ func renderWide(rows []Std1Row, termWidth int, w io.Writer) {
 		}
 	}
 	sepLen := idWidth + whenAbsWidth + exitWidth + cwdW + cmdW + 3
+	// Ensure separator doesn't exceed termWidth
+	if sepLen > termWidth {
+		sepLen = termWidth - 1 // Leave room for newline
+	}
 
-	_, _ = fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %s\n", idWidth, "id", whenAbsWidth, "when", exitWidth, "exit", cwdW, "cwd", "cmd")
-	_, _ = fmt.Fprintln(w, strings.Repeat("-", sepLen))
+	header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s", idWidth, "id", whenAbsWidth, "when", exitWidth, "exit", cwdW, "cwd", cmdW, "cmd")
+	header = clampLine(header, termWidth)
+	_, _ = fmt.Fprintln(w, header)
+	sepLine := strings.Repeat("-", sepLen)
+	sepLine = clampLine(sepLine, termWidth-1) // Ensure room for newline
+	_, _ = fmt.Fprintln(w, sepLine)
 
 	for _, r := range rows {
 		exit := "-"
@@ -116,7 +154,13 @@ func renderWide(rows []Std1Row, termWidth int, w io.Writer) {
 		}
 		cwdShow := TruncateCwdTail(r.Cwd, cwdW)
 		cmdShow := TruncateRight(r.Cmd, cmdW)
-		_, _ = fmt.Fprintf(w, "%-*d %-*s %-*s %-*s %s\n", idWidth, r.EventID, whenAbsWidth, FormatWhenAbs(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
+
+		// Format the line
+		line := fmt.Sprintf("%-*d %-*s %-*s %-*s %s", idWidth, r.EventID, whenAbsWidth, FormatWhenAbs(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
+
+		// Clamp line to prevent overflow
+		line = clampLine(line, termWidth)
+		_, _ = fmt.Fprintln(w, line)
 	}
 }
 
@@ -133,9 +177,17 @@ func renderDebug(rows []Std1Row, termWidth int, w io.Writer) {
 		}
 	}
 	sepLen := idWidth + sessionIDWidth + seqWidth + whenAbsWidth + exitWidth + cwdW + cmdW + 4
+	// Ensure separator doesn't exceed termWidth
+	if sepLen > termWidth {
+		sepLen = termWidth - 1 // Leave room for newline
+	}
 
-	_, _ = fmt.Fprintf(w, "%-*s %-*s %-*s %-*s %-*s %-*s %s\n", idWidth, "id", sessionIDWidth, "session_id", seqWidth, "seq", whenAbsWidth, "when", exitWidth, "exit", cwdW, "cwd", "cmd")
-	_, _ = fmt.Fprintln(w, strings.Repeat("-", sepLen))
+	header := fmt.Sprintf("%-*s %-*s %-*s %-*d %-*s %-*s %-*s %-*s", idWidth, "id", sessionIDWidth, "session_id", seqWidth, "seq", whenAbsWidth, "when", exitWidth, "exit", cwdW, "cwd", cmdW, "cmd")
+	header = clampLine(header, termWidth)
+	_, _ = fmt.Fprintln(w, header)
+	sepLine := strings.Repeat("-", sepLen)
+	sepLine = clampLine(sepLine, termWidth-1) // Ensure room for newline
+	_, _ = fmt.Fprintln(w, sepLine)
 
 	for _, r := range rows {
 		exit := "-"
@@ -144,6 +196,12 @@ func renderDebug(rows []Std1Row, termWidth int, w io.Writer) {
 		}
 		cwdShow := TruncateCwdTail(r.Cwd, cwdW)
 		cmdShow := TruncateRight(r.Cmd, cmdW)
-		_, _ = fmt.Fprintf(w, "%-*d %-*s %-*d %-*s %-*s %-*s %s\n", idWidth, r.EventID, sessionIDWidth, r.SessionID, seqWidth, r.Seq, whenAbsWidth, FormatWhenAbs(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
+
+		// Format the line
+		line := fmt.Sprintf("%-*d %-*s %-*d %-*s %-*s %-*s %s", idWidth, r.EventID, sessionIDWidth, r.SessionID, seqWidth, r.Seq, whenAbsWidth, FormatWhenAbs(r.StartedAt), exitWidth, exit, cwdW, cwdShow, cmdShow)
+
+		// Clamp line to prevent overflow
+		line = clampLine(line, termWidth)
+		_, _ = fmt.Fprintln(w, line)
 	}
 }

@@ -285,3 +285,39 @@ func formatRelative(d time.Duration) string {
 	}
 	return "long ago"
 }
+
+// clampLine ensures a line does not exceed the specified width by truncating the last column.
+// Operates on runes, not bytes, to handle multi-byte characters correctly.
+func clampLine(line string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return line
+	}
+
+	// Convert to runes to handle multi-byte characters correctly
+	runes := []rune(line)
+	if len(runes) <= maxWidth {
+		return line
+	}
+
+	// Find the last space before the cutoff to truncate at word boundary if possible
+	cutPos := maxWidth - 1 // Leave room for ellipsis if needed
+	if cutPos < 0 {
+		cutPos = 0
+	}
+
+	// Look backwards from cutPos to find a space (word boundary)
+	for i := cutPos; i > 0; i-- {
+		if runes[i] == ' ' {
+			// Found a space, truncate here and add ellipsis
+			return string(runes[:i]) + ellipsis
+		}
+	}
+
+	// No space found, truncate directly and add ellipsis
+	if cutPos > len(ellipsis) {
+		return string(runes[:cutPos-len(ellipsis)]) + ellipsis
+	}
+
+	// Very small width, just truncate
+	return string(runes[:cutPos])
+}
