@@ -69,6 +69,40 @@ func TestMigrateImportIdempotent(t *testing.T) {
 	}
 }
 
+func TestMigrateSync(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.db")
+
+	conn, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close database: %v", closeErr)
+		}
+	}()
+
+	var dummy int
+	err = conn.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='sync_published_tombstones'`).Scan(&dummy)
+	if err != nil {
+		t.Fatalf("sync_published_tombstones table missing: %v", err)
+	}
+
+	// PublishManifest queries this table on every push; must not error when empty.
+	rows, err := conn.Query(`
+		SELECT tombstone_id FROM sync_published_tombstones
+		WHERE vault_id = ? AND node_id = ? ORDER BY tombstone_id
+	`, "vault", "node")
+	if err != nil {
+		t.Fatalf("query sync_published_tombstones: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	if rows.Err() != nil {
+		t.Fatalf("rows: %v", rows.Err())
+	}
+}
+
 func TestMigratePinned(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.db")

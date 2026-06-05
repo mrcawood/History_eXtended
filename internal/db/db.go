@@ -103,6 +103,13 @@ func migrateSync(conn *sql.DB) error {
 			published_at TEXT NOT NULL,
 			PRIMARY KEY (vault_id, node_id)
 		);
+		CREATE TABLE IF NOT EXISTS sync_published_tombstones (
+			vault_id TEXT NOT NULL,
+			node_id TEXT NOT NULL,
+			tombstone_id TEXT NOT NULL,
+			published_at REAL NOT NULL,
+			PRIMARY KEY (vault_id, node_id, tombstone_id)
+		);
 	`)
 	if err != nil {
 		return err
