@@ -29,11 +29,13 @@ func TestCmdSearchNullFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmdID, _ := st.CmdID("echo hello", 1000)
-	_, err = st.InsertEvent(
+	if _, err := st.InsertEvent(
 		&store.PreEvent{T: "pre", Ts: 1000, Sid: "s1", Seq: 1, Cmd: "echo hello", Cwd: "/work", Host: "testhost"},
 		&store.PostEvent{T: "post", Ts: 1001, Sid: "s1", Seq: 1, Exit: 0, DurMs: 5},
 		cmdID,
-	)
+	); err != nil {
+		t.Fatal(err)
+	}
 	_ = conn.Close()
 
 	bin := filepath.Join(t.TempDir(), "hx-test")

@@ -84,11 +84,6 @@ func renderCompact(rows []Std1Row, termWidth int, w io.Writer) {
 		}
 	}
 
-	sepLen := idWidth + whenCompactWidth + exitWidth + cwdW + cmdW + 3
-	if sepLen > termWidth {
-		sepLen = termWidth
-	}
-
 	header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s", idWidth, "id", whenCompactWidth, "when", exitWidth, "exit", cwdW, "cwd", cmdW, "cmd")
 	for len([]rune(header)) > termWidth && cmdW > 3 {
 		cmdW--

@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-go@v5
         with:
@@ -77,9 +77,9 @@ jobs:
           go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload Coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
-          file: ./coverage.out
+          files: ./coverage.out
           flags: unittests
 
       - name: Validate (A1-A7 golden dataset)
@@ -97,14 +97,14 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.64.8
           args: --timeout=5m
