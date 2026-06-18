@@ -26,7 +26,7 @@ func TestCorruptDoesNotBlockValidImports(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(time.Second).Unix()),
 			Cmd:       "echo valid",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/tmp",
 		},
 	}
@@ -46,7 +46,7 @@ func TestCorruptDoesNotBlockValidImports(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(time.Minute).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(time.Minute).Add(time.Second).Unix()),
 			Cmd:       "echo corrupt",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/tmp",
 		},
 	}

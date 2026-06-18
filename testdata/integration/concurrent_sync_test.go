@@ -39,7 +39,7 @@ func createConcurrentSegments(t *testing.T, nodeA, nodeB *test_utils.TestNode, n
 				NodeID: "nodeA", SessionID: "sessionA", Seq: i + 1,
 				StartedAt: float64(time.Now().UTC().Add(time.Duration(i) * time.Minute).Unix()),
 				EndedAt:   float64(time.Now().UTC().Add(time.Duration(i)*time.Minute).Add(time.Second).Unix()),
-				Cmd:       "command A" + string(rune('A'+i)), ExitCode: 0, Cwd: "/home/user",
+				Cmd:       "command A" + string(rune('A'+i)), ExitCode: test_utils.IntPtr(0), Cwd: "/home/user",
 			}
 			header, payload := nodeA.CreateTestSegment([]hs.SegmentEvent{ev})
 			key, _ := nodeA.PublishSegment(header, payload)
@@ -56,7 +56,7 @@ func createConcurrentSegments(t *testing.T, nodeA, nodeB *test_utils.TestNode, n
 				NodeID: "nodeB", SessionID: "sessionB", Seq: i + 1,
 				StartedAt: float64(time.Now().UTC().Add(time.Duration(i) * time.Minute).Unix()),
 				EndedAt:   float64(time.Now().UTC().Add(time.Duration(i)*time.Minute).Add(time.Second).Unix()),
-				Cmd:       "command B" + string(rune('A'+i)), ExitCode: 0, Cwd: "/home/user",
+				Cmd:       "command B" + string(rune('A'+i)), ExitCode: test_utils.IntPtr(0), Cwd: "/home/user",
 			}
 			header, payload := nodeB.CreateTestSegment([]hs.SegmentEvent{ev})
 			key, _ := nodeB.PublishSegment(header, payload)
@@ -216,7 +216,7 @@ func TestConcurrentTombstoneOperations(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(-2 * time.Hour).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(-2 * time.Hour).Add(10 * time.Second).Unix()),
 			Cmd:       "ls -la",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/home/user",
 		},
 	}

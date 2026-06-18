@@ -15,6 +15,12 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// IntPtr returns a pointer to v (for optional SegmentEvent fields).
+func IntPtr(v int) *int {
+	p := v
+	return &p
+}
+
 // TestNode represents an isolated hx node for integration testing
 type TestNode struct {
 	Dir      string

@@ -26,7 +26,7 @@ func TestTombstonePreInsertEnforcement(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(-2 * time.Hour).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(-2 * time.Hour).Add(10 * time.Second).Unix()),
 			Cmd:       "echo to_be_deleted",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/tmp",
 		},
 	}

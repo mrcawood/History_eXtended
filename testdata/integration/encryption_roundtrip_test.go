@@ -31,7 +31,7 @@ func TestEncryptionRoundtrip(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(-2 * time.Hour).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(-2 * time.Hour).Add(3 * time.Second).Unix()),
 			Cmd:       "ls -la",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/home/user",
 		},
 		{
@@ -41,7 +41,7 @@ func TestEncryptionRoundtrip(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(-1 * time.Hour).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(-1 * time.Hour).Add(2 * time.Second).Unix()),
 			Cmd:       "cd /tmp",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/home/user",
 		},
 	}
@@ -126,7 +126,7 @@ func TestTamperDetection(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(time.Second).Unix()),
 			Cmd:       "test command",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/tmp",
 		},
 	}
@@ -169,7 +169,7 @@ func TestDifferentObjectTypes(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(time.Second).Unix()),
 			Cmd:       "test command",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/tmp",
 		},
 	}
@@ -268,7 +268,7 @@ func TestCrossNodeKeyExchange(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(time.Second).Unix()),
 			Cmd:       "secret command",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/home/user",
 		},
 	}

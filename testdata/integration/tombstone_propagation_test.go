@@ -31,11 +31,11 @@ func tombstonePropagationTestEvents() []hs.SegmentEvent {
 		{NodeID: "nodeA", SessionID: "session1", Seq: 1,
 			StartedAt: float64(now.Add(-2 * time.Hour).Unix()),
 			EndedAt:  float64(now.Add(-2*time.Hour).Add(10 * time.Second).Unix()),
-			Cmd: "ls -la", ExitCode: 0, Cwd: "/home/user"},
+			Cmd: "ls -la", ExitCode: test_utils.IntPtr(0), Cwd: "/home/user"},
 		{NodeID: "nodeA", SessionID: "session1", Seq: 2,
 			StartedAt: float64(now.Add(-1 * time.Hour).Unix()),
 			EndedAt:   float64(now.Add(-1*time.Hour).Add(5 * time.Second).Unix()),
-			Cmd: "cd /tmp", ExitCode: 0, Cwd: "/home/user"},
+			Cmd: "cd /tmp", ExitCode: test_utils.IntPtr(0), Cwd: "/home/user"},
 	}
 }
 
@@ -150,7 +150,7 @@ func TestEventKeyTombstone(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(-2 * time.Hour).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(-2 * time.Hour).Add(10 * time.Second).Unix()),
 			Cmd:       "ls -la",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/home/user",
 		},
 		{
@@ -160,7 +160,7 @@ func TestEventKeyTombstone(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(-1 * time.Hour).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(-1 * time.Hour).Add(5 * time.Second).Unix()),
 			Cmd:       "cd /tmp",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/home/user",
 		},
 	}

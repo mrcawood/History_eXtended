@@ -26,7 +26,7 @@ func TestTwoNodeConverge(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(-2 * time.Hour).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(-2 * time.Hour).Add(10 * time.Second).Unix()),
 			Cmd:       "ls -la",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/home/user",
 		},
 		{
@@ -36,7 +36,7 @@ func TestTwoNodeConverge(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(-1 * time.Hour).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(-1 * time.Hour).Add(5 * time.Second).Unix()),
 			Cmd:       "cd /tmp",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/home/user",
 		},
 	}
@@ -120,7 +120,7 @@ func TestBidirectionalSync(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(-1 * time.Hour).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(-1 * time.Hour).Add(2 * time.Second).Unix()),
 			Cmd:       "echo hello",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/home/user",
 		},
 	}
@@ -134,7 +134,7 @@ func TestBidirectionalSync(t *testing.T) {
 			StartedAt: float64(time.Now().UTC().Add(-1 * time.Hour).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(-1 * time.Hour).Add(2 * time.Second).Unix()),
 			Cmd:       "echo world",
-			ExitCode:  0,
+			ExitCode:  test_utils.IntPtr(0),
 			Cwd:       "/home/user",
 		},
 	}

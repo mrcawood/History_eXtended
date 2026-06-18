@@ -36,7 +36,7 @@ func createValidPartialPublishSegment(t *testing.T, node *test_utils.TestNode) [
 		{NodeID: "nodeA", SessionID: "session1", Seq: 1,
 			StartedAt: float64(time.Now().UTC().Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(time.Second).Unix()),
-			Cmd: "echo test", ExitCode: 0, Cwd: "/tmp"},
+			Cmd: "echo test", ExitCode: test_utils.IntPtr(0), Cwd: "/tmp"},
 	}
 	header, payload := node.CreateTestSegment(events)
 	data, err := hs.EncodeSegment(header, payload, node.VaultKey, true)

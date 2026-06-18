@@ -43,7 +43,7 @@ func encodeStoreScanSegments(t *testing.T, node *test_utils.TestNode) ([]byte, [
 		{NodeID: "nodeA", SessionID: "session1", Seq: 1,
 			StartedAt: float64(time.Now().UTC().Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(time.Second).Unix()),
-			Cmd: "echo robust", ExitCode: 0, Cwd: "/tmp"},
+			Cmd: "echo robust", ExitCode: test_utils.IntPtr(0), Cwd: "/tmp"},
 	}
 	header1, payload1 := node.CreateTestSegment(events1)
 	validData1, err := hs.EncodeSegment(header1, payload1, node.VaultKey, true)
@@ -54,7 +54,7 @@ func encodeStoreScanSegments(t *testing.T, node *test_utils.TestNode) ([]byte, [
 		{NodeID: "nodeA", SessionID: "session2", Seq: 1,
 			StartedAt: float64(time.Now().UTC().Add(time.Minute).Unix()),
 			EndedAt:   float64(time.Now().UTC().Add(time.Minute).Add(time.Second).Unix()),
-			Cmd: "echo robust2", ExitCode: 0, Cwd: "/tmp"},
+			Cmd: "echo robust2", ExitCode: test_utils.IntPtr(0), Cwd: "/tmp"},
 	}
 	header2, payload2 := node.CreateTestSegment(events2)
 	validData2, err := hs.EncodeSegment(header2, payload2, node.VaultKey, true)
