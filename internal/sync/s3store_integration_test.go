@@ -3,10 +3,8 @@ package sync
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -14,22 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// minIOAvailable checks if MinIO is reachable at localhost:9000.
-// If HX_REQUIRE_S3_ENDPOINT=1, fails when unavailable; otherwise skips.
-func minIOAvailable(t *testing.T) {
-	conn, err := net.DialTimeout("tcp", "127.0.0.1:9000", 2*time.Second)
-	if err == nil {
-		conn.Close()
-		return
-	}
-	if os.Getenv("HX_REQUIRE_S3_ENDPOINT") == "1" {
-		t.Fatalf("MinIO required but not reachable: %v", err)
-	}
-	t.Skipf("MinIO not available: %v", err)
-}
+// minIOAvailable is defined in s3_integration_helpers_test.go.
 
-// TestS3Store_MinIOIntegration tests S3Store against a real MinIO instance.
-// Only runs when HX_REQUIRE_S3_ENDPOINT=1 (Phase 2B integration gate). Otherwise skips.
 func TestS3Store_MinIOIntegration(t *testing.T) {
 	if os.Getenv("HX_REQUIRE_S3_ENDPOINT") != "1" {
 		t.Skip("skipping MinIO integration test unless HX_REQUIRE_S3_ENDPOINT=1")
@@ -37,15 +21,7 @@ func TestS3Store_MinIOIntegration(t *testing.T) {
 	minIOAvailable(t)
 
 	ctx := context.Background()
-	cfg := S3Config{
-		Bucket:    "test-bucket",
-		Prefix:    fmt.Sprintf("test-%d", time.Now().Unix()),
-		Region:    "us-east-1",
-		Endpoint:  "http://localhost:9000",
-		PathStyle: true,
-		AccessKey: "minioadmin",
-		SecretKey: "minioadmin",
-	}
+	cfg := minIOTestS3Config("test-bucket", minIOTestPrefix())
 
 	store, err := NewS3Store(ctx, cfg)
 	if err != nil {

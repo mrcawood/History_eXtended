@@ -18,15 +18,7 @@ func TestRetryableStore_MinIOIntegration(t *testing.T) {
 
 	// Setup MinIO connection
 	ctx := context.Background()
-	cfg := S3Config{
-		Bucket:    "hx-test",
-		Prefix:    fmt.Sprintf("test-%d", time.Now().Unix()),
-		Region:    "us-east-1",
-		Endpoint:  "http://localhost:9000",
-		PathStyle: true,
-		AccessKey: "minioadmin",
-		SecretKey: "minioadmin",
-	}
+	cfg := minIOTestS3Config("hx-test", minIOTestPrefix())
 
 	store, err := NewS3Store(ctx, cfg)
 	if err != nil {
