@@ -27,7 +27,8 @@ func GetEvent(conn *sql.DB, eventID int64) (*EventDetail, error) {
 	var d EventDetail
 	var exit, dur sql.NullInt64
 	err := conn.QueryRow(`
-		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.duration_ms, e.cwd,
+		SELECT e.event_id, e.session_id, e.seq, e.exit_code, e.duration_ms,
+		       COALESCE(NULLIF(TRIM(e.cwd), ''), NULLIF(TRIM(s.initial_cwd), ''), ''),
 		       COALESCE(c.cmd_text, ''), e.started_at, COALESCE(e.git_branch, ''), COALESCE(e.git_commit, ''),
 		       COALESCE(s.host, ''), COALESCE(e.origin, 'live'),
 		       COALESCE(s.tty, ''), COALESCE(s.shell, 'zsh')
@@ -76,9 +77,17 @@ func GetEvent(conn *sql.DB, eventID int64) (*EventDetail, error) {
 func FormatDetail(d *EventDetail) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "command:  %s\n", d.Cmd)
-	fmt.Fprintf(&b, "event_id: %d  session: %s  seq: %d\n", d.EventID, d.SessionID, d.Seq)
-	fmt.Fprintf(&b, "when:     %s  host: %s  origin: %s\n", RelTime(d.StartedAt), d.Host, d.Origin)
-	fmt.Fprintf(&b, "cwd:      %s\n", d.Cwd)
+	fmt.Fprintf(&b, "event_id: %d\n", d.EventID)
+	fmt.Fprintf(&b, "session:  %s\n", d.SessionID)
+	fmt.Fprintf(&b, "seq:      %d\n", d.Seq)
+	fmt.Fprintf(&b, "when:     %s\n", RelTime(d.StartedAt))
+	fmt.Fprintf(&b, "host:     %s\n", d.Host)
+	fmt.Fprintf(&b, "origin:   %s\n", d.Origin)
+	if d.Cwd != "" {
+		fmt.Fprintf(&b, "cwd:      %s\n", d.Cwd)
+	} else {
+		b.WriteString("cwd:      -\n")
+	}
 	if d.ExitCode != nil {
 		fmt.Fprintf(&b, "exit:     %d\n", *d.ExitCode)
 	} else {
@@ -91,7 +100,10 @@ func FormatDetail(d *EventDetail) string {
 		fmt.Fprintf(&b, "git:      %s @ %s\n", d.GitBranch, d.GitCommit)
 	}
 	if d.Tty != "" {
-		fmt.Fprintf(&b, "tty:      %s  shell: %s\n", d.Tty, d.Shell)
+		fmt.Fprintf(&b, "tty:      %s\n", d.Tty)
+	}
+	if d.Shell != "" {
+		fmt.Fprintf(&b, "shell:    %s\n", d.Shell)
 	}
 	for _, a := range d.Artifacts {
 		fmt.Fprintf(&b, "artifact: [%s] %s (id %d)\n", a.Kind, a.BlobPath, a.ArtifactID)

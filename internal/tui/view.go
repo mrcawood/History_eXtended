@@ -18,9 +18,11 @@ var (
 	styleSel     lipgloss.Style
 	styleExitOK  lipgloss.Style
 	styleExitBad lipgloss.Style
+	styleHost    lipgloss.Style
 	styleSync    lipgloss.Style
 	styleFooter  lipgloss.Style
 	stylePreview lipgloss.Style
+	stylePreviewPane lipgloss.Style
 )
 
 func initStyles(w io.Writer) {
@@ -28,12 +30,17 @@ func initStyles(w io.Writer) {
 	lipgloss.SetDefaultRenderer(r)
 	styleTitle = r.NewStyle().Bold(true).Foreground(lipgloss.Color("69"))
 	styleMuted = r.NewStyle().Foreground(lipgloss.Color("241"))
-	styleSel = r.NewStyle().Bold(true).Foreground(lipgloss.Color("136")) // dark yellow
+	styleSel = r.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("252"))
 	styleExitOK = r.NewStyle().Foreground(lipgloss.Color("42"))
 	styleExitBad = r.NewStyle().Foreground(lipgloss.Color("196"))
-	styleSync = r.NewStyle().Foreground(lipgloss.Color("214"))
+	styleHost = r.NewStyle().Foreground(lipgloss.Color("241"))
+	styleSync = r.NewStyle().Foreground(lipgloss.Color("39"))
 	styleFooter = r.NewStyle().Foreground(lipgloss.Color("241"))
 	stylePreview = r.NewStyle().Padding(0, 1)
+	stylePreviewPane = r.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1)
 }
 
 func (m model) View() string {
@@ -61,7 +68,15 @@ func (m model) View() string {
 	listPane := m.renderList(listW)
 	var body string
 	if prevW > 0 {
-		prevPane := stylePreview.Width(prevW).Render(m.renderPreview(prevW))
+		innerW := prevW - 4
+		if innerW < 12 {
+			innerW = 12
+		}
+		prevBody := m.renderPreview(innerW)
+		prevPane := stylePreviewPane.
+			Width(prevW).
+			Height(m.listHeight() + 1).
+			Render(prevBody)
 		body = lipgloss.JoinHorizontal(lipgloss.Top, listPane, prevPane)
 	} else {
 		body = listPane
@@ -197,13 +212,16 @@ func (m model) formatRow(r search.Row, width int, selected bool) string {
 			exitStyle = styleExitBad
 		}
 	}
+	whenStyled := styleMuted.Render(when)
 	if r.Origin == "sync" && host != "" {
 		host = styleSync.Render(host)
+	} else if host != "" {
+		host = styleHost.Render(host)
 	}
 	if r.DupCount > 1 {
 		dup = styleMuted.Render(fmt.Sprintf(" ×%d", r.DupCount))
 	}
-	meta := fmt.Sprintf("%s %s %s", exitStyle.Render(exit), when, host)
+	meta := fmt.Sprintf("%s %s %s", exitStyle.Render(exit), whenStyled, host)
 	cmd := r.Cmd
 	maxCmd := width - lipgloss.Width(meta) - 2
 	if maxCmd < 10 {
@@ -222,10 +240,35 @@ func (m model) renderPreview(width int) string {
 	lines := strings.Split(m.preview, "\n")
 	var out []string
 	for _, ln := range lines {
-		if len(ln) > width {
-			ln = ln[:width-3] + "..."
-		}
-		out = append(out, ln)
+		out = append(out, truncatePreviewLine(ln, width))
 	}
 	return strings.Join(out, "\n")
+}
+
+func truncatePreviewLine(ln string, width int) string {
+	if width < 8 || len(ln) <= width {
+		return ln
+	}
+	label, val, ok := strings.Cut(ln, ":  ")
+	if !ok {
+		return ln[:width-3] + "..."
+	}
+	label += ":  "
+	maxVal := width - len(label)
+	if maxVal < 4 {
+		return ln[:width-3] + "..."
+	}
+	return label + truncateMiddle(val, maxVal)
+}
+
+func truncateMiddle(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	if max <= 7 {
+		return s[:max]
+	}
+	head := (max - 3) / 2
+	tail := max - 3 - head
+	return s[:head] + "..." + s[len(s)-tail:]
 }

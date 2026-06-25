@@ -38,10 +38,23 @@ func Search(ctx context.Context, conn *sql.DB, cfg *config.Config, req Request) 
 	if req.Dedup {
 		rows = dedupRows(rows)
 	}
+	if req.Mode != ModeSemantic {
+		rows = sortByRecency(rows)
+	}
 	if len(rows) > limit {
 		rows = rows[:limit]
 	}
 	return rows, nil
+}
+
+func sortByRecency(rows []Row) []Row {
+	if len(rows) < 2 {
+		return rows
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		return rows[i].StartedAt > rows[j].StartedAt
+	})
+	return rows
 }
 
 func fetchCandidates(ctx context.Context, conn *sql.DB, cfg *config.Config, req Request) ([]Row, error) {
@@ -303,11 +316,9 @@ func dedupRows(rows []Row) []Row {
 	for _, r := range rows {
 		if a, ok := byCmd[r.Cmd]; ok {
 			a.count++
-			if r.StartedAt > a.row.StartedAt {
-				r.DupCount = a.count
-				a.row = r
-			}
-			a.row.DupCount = a.count
+			chosen := preferDedupRow(a.row, r)
+			chosen.DupCount = a.count
+			a.row = chosen
 			continue
 		}
 		r.DupCount = 1
@@ -323,6 +334,48 @@ func dedupRows(rows []Row) []Row {
 		out = append(out, byCmd[r.Cmd].row)
 	}
 	return out
+}
+
+func preferDedupRow(current, candidate Row) Row {
+	if candidate.StartedAt > current.StartedAt {
+		return candidate
+	}
+	if candidate.StartedAt < current.StartedAt {
+		return current
+	}
+	return preferSameTimeRow(current, candidate)
+}
+
+func preferSameTimeRow(a, b Row) Row {
+	ra, rb := originRank(a.Origin), originRank(b.Origin)
+	if ra != rb {
+		if rb > ra {
+			return b
+		}
+		return a
+	}
+	aHasExit := a.ExitCode != nil
+	bHasExit := b.ExitCode != nil
+	if aHasExit != bHasExit {
+		if bHasExit {
+			return b
+		}
+		return a
+	}
+	return a
+}
+
+func originRank(origin string) int {
+	switch origin {
+	case "live":
+		return 3
+	case "sync":
+		return 2
+	case "import":
+		return 1
+	default:
+		return 0
+	}
 }
 
 // ParseFilter parses a filter name from CLI/config.

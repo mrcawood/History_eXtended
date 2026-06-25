@@ -3,6 +3,7 @@
 /hxd
 tmp/
 tmp_test/
+.demo-recording/
 *.o
 *.test
 .specstory/

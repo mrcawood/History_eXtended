@@ -191,7 +191,7 @@ func insertSegmentData(st *store.Store, conn *sql.DB, h *Header, payload *Segmen
 		if endedAt == 0 && ev.DurationMs > 0 {
 			endedAt = ev.StartedAt + float64(ev.DurationMs)/1000
 		}
-		_, err = st.InsertSyncEvent(ev.Cmd, ev.StartedAt, endedAt, ev.DurationMs, ev.ExitCode, ev.Seq, sid, cmdID)
+		_, err = st.InsertSyncEvent(ev.Cmd, ev.StartedAt, endedAt, ev.DurationMs, ev.ExitCode, ev.Seq, sid, ev.Cwd, cmdID)
 		if err != nil {
 			return err
 		}

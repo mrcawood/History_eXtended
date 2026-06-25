@@ -24,10 +24,10 @@ func openTestDB(t *testing.T) (*store.Store, *sql.DB) {
 	return store.New(conn), conn
 }
 
-func seedEvents(t *testing.T, conn *sql.DB, st *store.Store, host, cwd, cmd string, exit int) {
+func seedEventsAt(t *testing.T, conn *sql.DB, st *store.Store, host, cwd, cmd string, exit int, startedAt float64) {
 	t.Helper()
-	sid := "sess-" + host
-	if err := st.EnsureSession(sid, host, "pts/0", cwd, float64(time.Now().Unix())); err != nil {
+	sid := "sess-" + host + "-" + cmd
+	if err := st.EnsureSession(sid, host, "pts/0", cwd, startedAt); err != nil {
 		t.Fatal(err)
 	}
 	var seq int
@@ -37,16 +37,19 @@ func seedEvents(t *testing.T, conn *sql.DB, st *store.Store, host, cwd, cmd stri
 	if seq == 0 {
 		seq = 1
 	}
-	cmdID, err := st.CmdID(cmd, float64(time.Now().Unix()))
+	cmdID, err := st.CmdID(cmd, startedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := float64(time.Now().Unix())
-	pre := &store.PreEvent{T: "pre", Ts: ts, Sid: sid, Seq: seq, Cmd: cmd, Cwd: cwd, Host: host}
-	post := &store.PostEvent{T: "post", Ts: ts, Sid: sid, Seq: seq, Exit: exit, DurMs: 100}
+	pre := &store.PreEvent{T: "pre", Ts: startedAt, Sid: sid, Seq: seq, Cmd: cmd, Cwd: cwd, Host: host}
+	post := &store.PostEvent{T: "post", Ts: startedAt, Sid: sid, Seq: seq, Exit: exit, DurMs: 100}
 	if _, err := st.InsertEvent(pre, post, cmdID); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func seedEvents(t *testing.T, conn *sql.DB, st *store.Store, host, cwd, cmd string, exit int) {
+	seedEventsAt(t, conn, st, host, cwd, cmd, exit, float64(time.Now().Unix()))
 }
 
 func TestSearchFilterHost(t *testing.T) {
@@ -103,6 +106,69 @@ func TestSearchDedup(t *testing.T) {
 	}
 	if rows[0].DupCount < 2 {
 		t.Fatalf("dup count=%d want >=2", rows[0].DupCount)
+	}
+}
+
+func TestSearchDedupPrefersLiveOverSync(t *testing.T) {
+	st, conn := openTestDB(t)
+	ts := float64(time.Now().Unix())
+	seedEventsAt(t, conn, st, "talos", "/tmp", "sudo apt install ttyd", 0, ts)
+
+	sid := store.SyncSessionID("node1", "sess-1")
+	if err := st.EnsureSyncSession(sid, "talos", "pts/0", "/tmp", ts); err != nil {
+		t.Fatal(err)
+	}
+	cmdID, err := st.CmdID("sudo apt install ttyd", ts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InsertSyncEvent("sudo apt install ttyd", ts, ts, 100, nil, 1, sid, "", cmdID); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := Search(context.Background(), conn, nil, Request{
+		Query: "ttyd",
+		Mode:  ModeFuzzy,
+		Dedup: true,
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want 1 deduped row, got %d", len(rows))
+	}
+	if rows[0].Origin != "live" {
+		t.Fatalf("origin=%q want live over sync duplicate", rows[0].Origin)
+	}
+	if rows[0].ExitCode == nil || *rows[0].ExitCode != 0 {
+		t.Fatalf("exit=%v want live exit code preserved", rows[0].ExitCode)
+	}
+}
+
+func TestSearchRecencyOrder(t *testing.T) {
+	st, conn := openTestDB(t)
+	base := float64(time.Now().Unix())
+	seedEventsAt(t, conn, st, "h1", "/tmp", "git checkout main", 0, base-3600)
+	seedEventsAt(t, conn, st, "h1", "/tmp", "git status", 0, base)
+
+	rows, err := Search(context.Background(), conn, nil, Request{
+		Query: "git",
+		Mode:  ModeFuzzy,
+		Dedup: false,
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) < 2 {
+		t.Fatalf("want >=2 rows, got %d", len(rows))
+	}
+	if rows[0].Cmd != "git status" {
+		t.Fatalf("newest first: got %q, want git status", rows[0].Cmd)
+	}
+	if rows[0].StartedAt <= rows[1].StartedAt {
+		t.Fatalf("rows not sorted by recency: %v then %v", rows[0].StartedAt, rows[1].StartedAt)
 	}
 }
 
