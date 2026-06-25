@@ -13,15 +13,15 @@ import (
 // detects color from its renderer's writer; zsh widgets pipe stdout so the
 // default renderer (stdout) would disable ANSI color.
 var (
-	styleTitle   lipgloss.Style
-	styleMuted   lipgloss.Style
-	styleSel     lipgloss.Style
-	styleExitOK  lipgloss.Style
-	styleExitBad lipgloss.Style
-	styleHost    lipgloss.Style
-	styleSync    lipgloss.Style
-	styleFooter  lipgloss.Style
-	stylePreview lipgloss.Style
+	styleTitle       lipgloss.Style
+	styleMuted       lipgloss.Style
+	styleSel         lipgloss.Style
+	styleExitOK      lipgloss.Style
+	styleExitBad     lipgloss.Style
+	styleHost        lipgloss.Style
+	styleSync        lipgloss.Style
+	styleFooter      lipgloss.Style
+	stylePreview     lipgloss.Style
 	stylePreviewPane lipgloss.Style
 )
 
