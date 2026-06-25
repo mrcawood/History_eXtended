@@ -3,10 +3,12 @@ package tui
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mrcawood/History_eXtended/internal/search"
+	"github.com/muesli/termenv"
 )
 
 // Package-level styles are rebound in initStyles before each Run. Lipgloss
@@ -27,6 +29,15 @@ var (
 
 func initStyles(w io.Writer) {
 	r := lipgloss.NewRenderer(w)
+	if os.Getenv("NO_COLOR") == "" {
+		switch {
+		case os.Getenv("HX_TUI_FORCE_COLOR") != "" || os.Getenv("FORCE_COLOR") != "":
+			r.SetColorProfile(termenv.ANSI256)
+		case r.ColorProfile() == termenv.Ascii:
+			// VHS/ttyd and some widget pipes report Ascii; TUI still needs ANSI.
+			r.SetColorProfile(termenv.ANSI256)
+		}
+	}
 	lipgloss.SetDefaultRenderer(r)
 	styleTitle = r.NewStyle().Bold(true).Foreground(lipgloss.Color("69"))
 	styleMuted = r.NewStyle().Foreground(lipgloss.Color("241"))

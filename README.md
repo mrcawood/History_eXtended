@@ -1,106 +1,131 @@
-# hx — History eXtended
+<p align="center">
+  <!-- light UI → dark logo; dark UI → light logo -->
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hx-logo-light.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/hx-logo-dark.png">
+    <img alt="hx — History eXtended" src="docs/assets/hx-logo-dark.png" width="420">
+  </picture>
+</p>
 
-[![CI](https://github.com/mrcawood/History_eXtended/workflows/CI/badge.svg)](https://github.com/mrcawood/History_eXtended/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
-[![Go Report Card](https://goreportcard.com/badge/github.com/mrcawood/History_eXtended)](https://goreportcard.com/report/github.com/mrcawood/History_eXtended)
+<p align="center">
+  <a href="https://github.com/mrcawood/History_eXtended/actions"><img src="https://github.com/mrcawood/History_eXtended/workflows/CI/badge.svg" alt="CI"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.21+-blue.svg" alt="Go 1.21+"></a>
+  <a href="https://goreportcard.com/report/github.com/mrcawood/History_eXtended"><img src="https://goreportcard.com/badge/github.com/mrcawood/History_eXtended" alt="Go Report Card"></a>
+</p>
 
-A "flight recorder" for the terminal. Captures command events (text, timestamps, exit codes, cwd, session) with negligible overhead, stores them in SQLite, and provides evidence-backed retrieval.
+**hx** is a local-first flight recorder for your terminal. It captures every command with exit codes, cwd, and session context, stores them in SQLite, and lets you search or replay what you actually did — not just what you remember.
 
-## What is hx?
+Shell history forgets outcomes. Scrollback vanishes. Build logs sit in `/tmp`. hx keeps the command trail, links it to artifacts like CI or compiler output, and answers questions with evidence you can cite.
 
-hx records every command you run so you can search, review, and export your terminal history with full context.
+## Quick start
 
-## Why it's powerful
-
-- **Fast:** Hooks write to a spool; a daemon ingests asynchronously. No blocking, minimal latency.
-- **Searchable:** Full-text search via SQLite FTS5. Optional semantic search with Ollama.
-- **Evidence-backed:** Timestamps, exit codes, cwd, session IDs. Export sessions as markdown.
-- **Local-first:** Data stays on your machine. Optional sync via shared folder.
-
----
-
-## Minimal quick start (single machine, no Ollama, no sync)
-
-Get searchable history in under a minute. No daemon or shell hooks required.
+No daemon, no hooks, no Ollama. Import what you already have and search in under a minute.
 
 ```bash
-make build
-make install   # optional: copies to ~/.local/bin
+git clone https://github.com/mrcawood/History_eXtended.git
+cd History_eXtended
+make build && make install   # optional: copies to ~/.local/bin
 
-# Import existing history
 hx import --file ~/.zsh_history
-
-# Search
 hx find make
 hx last
-# Optional: HX_DB_PATH=/path/to/db.db overrides DB location (e.g. if ~/.local/share is read-only)
 ```
 
-See [INSTALL.md](INSTALL.md) for details.
+For live capture (zsh or Bash 5+), see [INSTALL.md](INSTALL.md).
 
 ---
 
-## Live capture quick start (zsh)
+## What makes hx different
 
-To capture new commands as you type:
+### Always-on capture without slowing your shell
+
+Hooks append a JSON line to a spool via `hx-emit`. A background daemon (`hxd`) ingests asynchronously into SQLite. If the daemon is down, the spool buffers; if the spool is unavailable, capture disables rather than blocking your prompt.
 
 ```bash
-make build
-make install
-hxd &
-
-# Add to .zshrc (make install prompts to add this)
-source ~/.local/lib/hx/hx.zsh
-
-# Verify
-hx status
-hx find make
+make install          # copies binaries + shell hooks
+hxd &                 # start the ingest daemon
+source ~/.local/lib/hx/hx.zsh   # or hx.bash for Bash 5+
+hx status             # verify capture is healthy
 ```
 
-See [INSTALL.md#live-capture-zsh](INSTALL.md#live-capture-zsh).
+### Interactive history search
 
----
-
-## Live capture quick start (bash ≥ 5)
-
-Bash 5+ is supported. Add to `.bashrc`:
+`hx search -i` is a native Ctrl-R style picker: filter as you type, preview the full command, run or edit on accept. Bind it in zsh:
 
 ```bash
-source ~/.local/lib/hx/hx.bash
+source ~/.local/lib/hx/hx-widget.zsh
+bindkey '^R' hx-widget-search
 ```
 
-See [INSTALL.md#live-capture-bash](INSTALL.md#live-capture-bash).
+<p align="center">
+  <img src="docs/assets/hx-search-lookup.gif" alt="hx search interactive lookup demo" width="720">
+</p>
+
+Pipe-friendly modes work too: `hx search --format null` for fzf, `hx show <id>` for metadata.
+
+### Sessions with failure context
+
+`hx last` summarizes your most recent session and highlights failure clusters: the failing command plus one or two commands before and after. Exit codes, cwd, and timestamps are first-class — not inferred from scrollback.
+
+### Artifact correlation
+
+Attach a build log, CI output, or traceback; hx fingerprints the content and finds past sessions that look like this one. Skeleton hashing ignores volatile lines (timestamps, memory addresses) so variants still match.
+
+```bash
+hx attach --file build.log          # link to last session
+hx query --file ./error.log         # find similar past sessions (top matches)
+```
+
+Validated against a golden dataset of 25 real-world artifacts (build, CI, Slurm, compiler, traceback samples in `testdata/golden/`).
+
+### Two search modes: find vs query
+
+| When you… | Use | Example |
+|-----------|-----|---------|
+| Know the words | `hx find` | `hx find "git commit"` |
+| Describe intent | `hx query` | `hx query "how did I fix the make build"` |
+| Have a log file | `hx query --file` | `hx query --file pytest.log` |
+
+`hx find` is literal FTS5 — fast and exact. `hx query` extracts keywords from natural language, searches by OR, and optionally reranks with [Ollama](https://ollama.com/) embeddings plus an LLM summary with citations. Works without Ollama; add `--no-llm` to skip inference entirely. Use `--explain` to see extracted keywords.
+
+### Multi-device sync (encrypted)
+
+Replicate history across machines via a shared folder (NAS, Syncthing, removable drive). Vault-based storage with end-to-end encryption; merge is deterministic (union + tombstones).
+
+```bash
+hx sync init --store folder:/path/to/HXSync
+hx sync push    # publish local events
+hx sync pull    # on another device: import from store
+hx sync status
+```
+
+S3-compatible sync is implemented in the library; the CLI currently exposes `folder:` stores only. See [docs/roadmap/s3_sync.md](docs/roadmap/s3_sync.md).
+
+### Privacy by default
+
+- `hx pause` / `hx resume` — stop emitting immediately (nothing recorded while paused)
+- `hx forget --since 15m` — hard-delete a time window (1h, 24h, 7d)
+- `hx export --last --redacted` — share evidence without secrets
+- `hx pin --last` — exempt a session from retention pruning
 
 ---
 
-## Feature modules
+## Feature paths
 
-| Feature | What you get | Where |
-|--------|--------------|-------|
-| **Import-only** | Search imported history; no daemon or hooks | [INSTALL.md#import-only](INSTALL.md#import-only) |
-| **Live capture (zsh)** | Record every command in real time | [INSTALL.md#live-capture-zsh](INSTALL.md#live-capture-zsh) |
-| **Live capture (bash ≥ 5)** | Same for Bash 5+ | [INSTALL.md#live-capture-bash](INSTALL.md#live-capture-bash) |
-| **Ollama** | Semantic search and LLM summaries | [INSTALL.md#semantic-search-ollama](INSTALL.md#semantic-search-ollama) |
-| **Sync (folder)** | Multi-device sync via shared folder (NAS, Syncthing) | [INSTALL.md#multi-device-sync](INSTALL.md#multi-device-sync) |
-
----
-
-## Find vs Query
-
-- **`hx find`** — Literal text search when you know the words. Fast, exact FTS match.
-  - Example: `hx find make build` — finds commands containing "make build"
-  - Example: `hx find "git commit"` — phrase search
-- **`hx query`** — Natural-language retrieval when you describe what you want. Extracts keywords from your question (strips stopwords, tokenizes), searches by OR across keywords, then optionally semantic reranks and LLM summary via Ollama. When no keywords match, shows recent events; use `--no-fallback` to disable. Use `--explain` to see extracted keywords and FTS details.
-  - Example: `hx query "where is psge located?"` — extracts `psge`, finds events whose cwd/cmd contain it
-  - Example: `hx query "commands that built the project"` — semantic + optional summary
-  - Example: `hx query --file ./error.log` — find sessions with similar artifact
+| Path | What you get | Guide |
+|------|--------------|-------|
+| Import-only | Search imported history; no daemon | [INSTALL.md#import-only](INSTALL.md#import-only) |
+| Live capture (zsh) | Record every command in real time | [INSTALL.md#live-capture-zsh](INSTALL.md#live-capture-zsh) |
+| Live capture (Bash 5+) | Same for Bash 5+ | [INSTALL.md#live-capture-bash](INSTALL.md#live-capture-bash) |
+| Ollama | Semantic search and LLM summaries | [INSTALL.md#semantic-search-ollama](INSTALL.md#semantic-search-ollama) |
+| Sync (folder) | Multi-device encrypted sync | [INSTALL.md#multi-device-sync](INSTALL.md#multi-device-sync) |
 
 ---
 
 ## Commands
 
-Use `hx --help` for usage and `hx help <command>` or `hx <command> --help` for subcommand help.
+`hx --help` for usage; `hx help <command>` or `hx <command> --help` for subcommand detail.
 
 | Command | Description |
 |---------|-------------|
@@ -110,31 +135,31 @@ Use `hx --help` for usage and `hx help <command>` or `hx <command> --help` for s
 | `hx find <text>` | Full-text search over commands |
 | `hx search [query]` | History search (`-i` TUI; `--format null` for fzf) |
 | `hx show <event_id>` | Event metadata (`--raw` for command text only) |
-| `hx dump` | Last 20 events (debug) |
-| `hx debug` | Diagnostics: daemon PID, spool, DB |
 | `hx attach --file <path>` | Link artifact to last session |
-| `hx query "<question>" [--no-llm] [--no-fallback] [--explain]` | Natural-language search; keyword FTS; optional Ollama |
+| `hx query "<question>"` | Natural-language search; optional Ollama |
 | `hx query --file <path>` | Find sessions with similar artifact |
-| `hx pin [--session SID\|--last]` | Pin session (exempt from retention) |
-| `hx forget --since 15m\|1h\|24h\|7d` | Delete events in time window |
-| `hx export [--session SID\|--last] [--redacted]` | Export session as markdown |
+| `hx pin` / `hx forget` / `hx export` | Retention and evidence export |
 | `hx import --file <path>` | Import shell history file |
-| `hx sync init --store folder:/path` | Initialize sync vault |
-| `hx sync status` | Sync state: vault, pending, imported |
-| `hx sync push` | Publish local events to store |
-| `hx sync pull` | Import from store into local DB |
+| `hx sync init\|push\|pull\|status` | Multi-device sync |
+| `hx dump` / `hx debug` | Diagnostics |
 
 ---
 
 ## Requirements
 
-- **Go 1.21+** — [Install Go](https://go.dev/doc/install) (macOS: `brew install go`; Ubuntu/Debian: apt may lag; use official install)
-- **SQLite 3** with FTS5 (bundled via go-sqlite3)
-- **Shell:** zsh recommended; bash ≥ 5 supported for live capture
-- **Optional:** [Ollama](https://ollama.com/) for semantic search (`hx query "question"`)
+- **Go 1.21+** — [Install Go](https://go.dev/doc/install)
+- **SQLite 3** with FTS5 (bundled via go-sqlite3; `make build` uses `-tags sqlite_fts5`)
+- **Shell:** zsh recommended; Bash ≥ 5 for live capture
+- **Optional:** [Ollama](https://ollama.com/) for semantic `hx query`
 
 ---
 
+## Documentation
+
+- [INSTALL.md](INSTALL.md) — setup, hooks, sync, troubleshooting
+- [docs/](docs/) — architecture, validation, configuration reference
+- [prd.md](prd.md) — product requirements and acceptance criteria
+
 ## License
 
-MIT License — see [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).

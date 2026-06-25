@@ -1,5 +1,16 @@
-# VHS tape: hx search -i lookup demo for README
-# Run via: ./scripts/record-lookup-demo.sh
+# VHS tape: hx search -i lookup demo (hardcoded — same TUI as Ctrl+R widget)
+# Run: ./scripts/record-lookup-demo.sh
+#
+# VHS cannot run zsh line-editor widgets; we launch the TUI directly.
+# Ctrl+R below is sent *inside* hx search -i (filter cycle), not the shell.
+#
+# Keystones (hold Sleep until frame looks right):
+#   K1  shell prompt
+#   K2  hx search -i open — filter: global · mode: fuzzy
+#   K3  typed git
+#   K4  Ctrl+R → filter: host
+#   K5  Ctrl+R → filter: dir
+#   K6  Enter → command printed, back at prompt
 
 Output docs/assets/hx-search-lookup.gif
 
@@ -12,29 +23,41 @@ Set Padding 24
 Set Framerate 12
 
 Hide
+Type "unset NO_COLOR"
+Enter
+Type "export TERM=xterm-256color"
+Enter
+Type "export COLORTERM=truecolor"
+Enter
+Type "export HX_TUI_FORCE_COLOR=1"
+Enter
 Type "export HX_DB_PATH='{{HX_DB_PATH}}'"
 Enter
 Type "export PATH='{{HX_BIN_DIR}}':$PATH"
+Enter
+Type "cd '{{REPO_ROOT}}'"
 Enter
 Type "clear"
 Enter
 Show
 
-Type "# interactive history lookup (Ctrl-R style)"
-Enter
-Sleep 400ms
+Sleep 800ms
+
 Type "hx search -i"
 Enter
-Sleep 1200ms
+Sleep 2s
 
-# Filter down to git-related commands
 Type "git"
-Sleep 900ms
+Sleep 1500ms
 
-# Move highlight, show preview pane updating
-Down@200ms 2
-Sleep 600ms
+Ctrl+R
+Sleep 2s
 
-# Select command (insert for editing)
+Ctrl+R
+Sleep 2s
+
+Down@150ms 2
+Sleep 800ms
+
 Enter
-Sleep 1200ms
+Sleep 1500ms

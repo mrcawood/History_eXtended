@@ -13,7 +13,7 @@ install: build
 	mkdir -p $(HOME)/.local/bin
 	install -m 755 bin/hx bin/hx-emit bin/hxd $(HOME)/.local/bin/
 	mkdir -p $(HX_LIB_DIR)
-	install -m 644 src/hooks/hx.zsh src/hooks/bash/hx.bash $(HX_LIB_DIR)/
+	install -m 644 src/hooks/hx.zsh src/hooks/bash/hx.bash src/hooks/hx-widget.zsh $(HX_LIB_DIR)/
 	install -m 755 scripts/start-hxd-if-needed.sh $(HX_LIB_DIR)/
 	@echo ""
 	@echo "========================================"
