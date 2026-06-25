@@ -18,6 +18,10 @@
 
 Shell history forgets outcomes. Scrollback vanishes. Build logs sit in `/tmp`. hx keeps the command trail, links it to artifacts like CI or compiler output, and answers questions with evidence you can cite.
 
+<p align="center">
+  <img src="docs/assets/hx-search-lookup.gif" alt="hx search interactive lookup demo" width="720">
+</p>
+
 ## Quick start
 
 No daemon, no hooks, no Ollama. Import what you already have and search in under a minute.
@@ -57,10 +61,6 @@ hx status             # verify capture is healthy
 source ~/.local/lib/hx/hx-widget.zsh
 bindkey '^R' hx-widget-search
 ```
-
-<p align="center">
-  <img src="docs/assets/hx-search-lookup.gif" alt="hx search interactive lookup demo" width="720">
-</p>
 
 Pipe-friendly modes work too: `hx search --format null` for fzf, `hx show <id>` for metadata.
 
