@@ -11,7 +11,7 @@
   <a href="https://github.com/mrcawood/History_eXtended/actions"><img src="https://github.com/mrcawood/History_eXtended/workflows/CI/badge.svg" alt="CI"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.21+-blue.svg" alt="Go 1.21+"></a>
-  <a href="https://goreportcard.com/report/github.com/mrcawood/History_eXtended"><img src="https://goreportcard.com/badge/github.com/mrcawood/History_eXtended" alt="Go Report Card"></a>
+  <a href="https://golangci-lint.run/"><img src="https://img.shields.io/badge/lint-golangci--lint-brightgreen" alt="lint: golangci-lint"></a>
 </p>
 
 **hx** is a local-first flight recorder for your terminal. It captures every command with exit codes, cwd, and session context, stores them in SQLite, and lets you search or replay what you actually did — not just what you remember.
@@ -151,6 +151,14 @@ S3-compatible sync is implemented in the library; the CLI currently exposes `fol
 - **SQLite 3** with FTS5 (bundled via go-sqlite3; `make build` uses `-tags sqlite_fts5`)
 - **Shell:** zsh recommended; Bash ≥ 5 for live capture
 - **Optional:** [Ollama](https://ollama.com/) for semantic `hx query`
+
+## Development
+
+CI runs [golangci-lint](https://golangci-lint.run/) (config: `.golangci.yml`). Locally:
+
+```bash
+make lint
+```
 
 ---
 

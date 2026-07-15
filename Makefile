@@ -1,6 +1,6 @@
 # hx build
 
-.PHONY: build install test test-sync clean
+.PHONY: build install test test-sync lint clean
 
 build:
 	go build -tags sqlite_fts5 -o bin/hx ./cmd/hx
@@ -41,6 +41,9 @@ install: build
 
 test:
 	go test ./...
+
+lint:
+	golangci-lint run --timeout=5m --build-tags=sqlite_fts5
 
 test-s3-integration:
 	@if ! command -v docker >/dev/null 2>&1; then \
