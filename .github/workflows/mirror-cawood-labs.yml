@@ -1,0 +1,26 @@
+name: Mirror to cawood-labs
+
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror push to cawood-labs
+        env:
+          MIRROR_TOKEN: ${{ secrets.CAWOOD_LABS_MIRROR_TOKEN }}
+        run: |
+          if [[ -z "${MIRROR_TOKEN}" ]]; then
+            echo "CAWOOD_LABS_MIRROR_TOKEN not set; skipping mirror"
+            exit 0
+          fi
+          git clone --mirror "https://github.com/${GITHUB_REPOSITORY}.git" repo.git
+          cd repo.git
+          git push --mirror "https://x-access-token:${MIRROR_TOKEN}@github.com/cawood-labs/History_eXtended.git"
